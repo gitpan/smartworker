@@ -1,0 +1,338 @@
+# $Id: INSTALL,v 1.15 1999/11/11 21:10:05 gozer Exp $
+
+=head1   SmartWorker Install Instructions - First Draft
+
+Aug 19, 1999 - Scott Wilson
+Aug 29, 1999 - First revision, Kyle Dawkins
+Sep 04, 1999 - Second revision, Philippe Chiasson
+
+   To Date this software has only been tested under linux, but
+it uses very standard software and no C code, so I imagine it should
+run under most unices supported by mod_perl with little or no
+alterations.  Please do let us know if you successfully use it on
+other platforms, or what problems you run into if don't succeed in getting
+it running on other platforms.
+
+
+=head2 Getting the required packages
+
+=head2   Required Packages
+
+- Perl 5.005
+
+=over 3
+
+=item B<Apache>
+
+http://www.apache.org/
+   - Apache 1.3.6 or higher
+
+=item B<mod_perl>
+
+http://perl.apache.org/ 
+   - The distribution is available on CPAN ( http://www.perl.com/CPAN/modules/by-module/Apache/ )
+	- mod_perl 1.21
+
+=item B<perl modules from CPAN>
+
+We highly recommend investing the time to download and install the CPAN
+ perl module.  It will make your life substantially easier in installing
+ the rest of these.  In a short while, SmartWorker will be on CPAN, providing
+ an easire way to automatically install required modules, but for the time being, 
+ here is what you'll need installed: 
+
+
+         http://www.perl.com/CPAN
+
+         for the framework:
+
+         -Bundle::libnet
+         -Bundle::LWP
+         -Bundle::DBI
+         -Bundle::Mysql  (or whatever databse you choose)
+         -Bundle::Apache  (include Apache::DBI I think)
+         -CGI (in Bundle::Apache)
+         -Filter::Util::Call   (source filter package)
+         -Apache::Session
+         -Apache::Language 0.05 (Internationalisation support)
+	 -Storable
+
+         for apps:
+
+         -Date::Manip
+         -Date::Calc
+         
+         also recommended:
+
+         -Apache::Status
+         -BSD::Resource
+         -Apache::Resource
+
+
+=item B<SmartWorker Distribution>
+
+http://www.smartworker.org/
+
+Get the latest clean distribution (specified by a release version
+number) to be sure that the code is working;  the nightly releases
+are for interested parties, hackers and contributors only!
+
+The nightly releases are splitted in 2 tarballs: smartworker-core and smartworker-apps.
+The core contains all the SW::* modules for the back-end and apps is all the
+applications currently developped in-store. In a while you might want to check
+the SW::App::* modules on the nearest CPAN site.
+
+=back
+
+=head1 Apache /mod_perl Build Process
+
+=item B<Sample transcript used to build apache>
+
+If you already have a working build of Apache with mod_perl, you can
+skip this section.  You might have trouble, however, if you try
+to use SmartWorker with a build of Apache that wasn't built with "EVERYTHING=1"
+or "ALL_HOOKS=1", although this is not confirmed; if you have more information
+for us about this, please let us know.
+
+Note:  There are many different ways to accomplish this task depending
+largely on what you needs are (SSL, squid etc...) For much more detailed 
+documentation refer to the INSTALL notes in the mod_perl source distribution
+or to the mod_perl developer's guide (http://perl.apache.org/guide).
+
+This is based on the second (flexible) method for building mod_perl
+from the INSTALL.apaci file. 
+
+in /usr/local/src  untar the apache and mod_perl distributions so you
+have something like this:
+
+	/usr/local/src/apache_1.3.x
+	/usr/local/src/mod_perl-1.21
+
+	> cd mod_perl-1.21
+	> perl Makefile.PL \
+		APACHE_SRC=..\apache_1.3.x \
+		DO_HTTPD=1 \
+		USE_APACI=1 \
+		PREP_HTTPD=1 \
+		EVERYTHING=1
+	> make
+	> make test   (tests failed because we haven't built apache yet...) 
+	> make install
+
+	(configure other modules such as mod_ssl )
+
+	> cd ..
+	> cd apache_1.3.x
+	> ./configure --prefix=/usr/local/apache --with-layout=Apache \
+			--activate-module=src/modules/perl/libperl.a
+	> make
+	> make install
+
+
+=head1 Untarring the SmartWorker distribution
+
+The untarring-installation process is pretty straight-forward. First untar/unzip the
+smartworker_ver.tar.gz file in any directory.
+
+         /tmp> tar xvfz smartworker_0.82.tar.gz
+         /tmp> cd smartworker-0.82
+
+If you downloaded the snapshots you'll have 2 files to untar smartworker-core and smartworker-apps.
+Either method will leave you with 2 directories in your source directory.  sw-core/ for the core, and 
+sw-apps/ for the applications
+
+Then you need to install the SmartWorker main modules.  Most of the perl modules will end up
+in the standard perl tree structure (wich you can overload with the PREFIX option of make), and
+other files need to be installed into your apache tree.  Those include configurations files,
+libraries of javascript and pictures.  this defaults to /usr/local/apache/smartworker.
+
+When you know where you want to install everything, first intall sw-core.
+
+	/tmp/smartworker-0.82> cd sw-core
+	/tmp/smartworker-0.82/sw-core> perl Makefile.PL
+	/tmp/smartworker-0.82/sw-core> make
+	/tmp/smartworker-0.82/sw-core> make test (none so far)
+	/tmp/smartworker-0.82/sw-core> make install
+
+That's all there is to it.  Then you'll want to install the accompanying applications
+
+	/tmp/smartworker-0.82/sw-core> cd ../sw-apps
+	/tmp/smartworker-0.82/sw-apps> perl Makefile.PL
+	/tmp/smartworker-0.82/sw-apps> make
+	/tmp/smartworker-0.82/sw-apps> make test (none so far)
+	/tmp/smartworker-0.82/sw-apps> make install
+
+At that point all the perl modules will be under the SW::* namespace, the Applications under SW::App::*
+The only exception is the Office::* modules that are shipped with SmartWorker right now, but that will
+soon enter CPAN on it's own.
+
+=head1 Apache/mod_perl Build Process
+
+Next you'll have to get apache configured to find the SmartWorker code.  We've
+included both a sample httpd.conf file and a file called smartworker.conf in
+the /conf directory.  
+
+You will need to edit this file to correspond to where you have installed
+the SmartWorker source, although the defaults in the file will be fine if you
+installed the tar distribution in /usr/local/apache.  Otherwise, you must edit
+the appropriate places in the smartworker.conf file to point into the smartworker
+directory structure.  This should be fairly self-explanatory.  You must also
+edit the "sw-perl-startup.pl" file in the same directory.  This file initialises
+mod_perl for the SmartWorker distribution.
+
+Once you've edited these files, you're going to need to edit the
+Apache config to tell it where to find the smartworker configuration
+information.  The easiest way to do this is to use a
+Include directive to include smartworker 
+specific configuration. (this is the file I called smartworker.conf)
+You can do this at the end of the httpd.conf file:
+
+         Include /usr/local/apache/smartworker/conf/smartworker.conf
+
+should do it.  When Apache starts, it will configure itself normally
+and then examine the smartworker.conf file for any stuff specific
+to SmartWorker.
+
+Please refer to smartworker.conf for more info for now.  If you've
+set up mod_perl before this should be straightforward.  If not would again
+suggest you consult the Mod_Perl Developer's Guide.
+
+=head1 Setting up the database
+
+This is probably the most difficult part of the setup process. It involves
+having access to a database, having the correct DBD modules, and knowing a little
+bit about database permissions.  We will try to be verbose about how the
+setup works, but if you still have problems, feel free to email us on the Smartworker
+mailing list (join at http://www.smartworker.org/mailman/listinfo/smartworker).
+
+We include here instructions that favour the MySQL database.  Other databases such
+as Oracle, Informix or PostgreSQL should work without too much alteration as long
+as the appropriate DBD modules are installed and you've done pretty much the
+same stuff as described below re: database/table/user creation.
+
+Included in the conf directory is a file called clean_sw_db.csv.
+This is straight SQL dumped from our MySQL database that will create the tables and
+some dummy records for use with the SmartWorker system.  We will assume that
+you have administrator access to the database in order to get this to work.
+
+First, you need to create a database (usually called "smartworker") that the data
+will be stored in.  In MySQL, you would execute the following:
+
+         > mysqladmin --host=<databasehost> --user=<you> \
+                 --password=<yourpassword> create smartworker
+
+This should create the database.  Next you need to create a user which you will use
+to access that database, and then explicitly grant that user permission to access it.
+You can do this using the MySQL client, "mysql":
+
+         > mysql --host=<databasehost> --user=<you> \
+                 --password=<yourpassword> mysql
+
+			> grant all privileges on smartworker.* to user sw@% identified by 'password';
+			> grant all privileges on smartworker.* to user sw@localhost identified by 'password';
+
+
+This creates a user with minimal privileges: select, insert, update and delete.
+Depending on which hosts will access the database as this user, you may need also to 
+create a user with 'localhost' in the first column, and then add an entry in the
+db table with 'localhost' in the first column too.  This will depend on your
+setup:  you have to do this if your database and webserver are on the same machine.
+For some reason, MySQL doesn't allow the '%' wildcard to accept 'localhost'. If
+someone wants to explain this to us, feel free...
+
+After creating the user, you need to flush the privileges.  You can do this
+by executing
+
+         > mysqladmin --host=<databasehost> --user=<you> \
+                 --password=<yourpassword> reload
+
+and the user should be created.
+
+You should be able to test it using the mysql client:
+
+         > mysql --host=<databasehost> --user=sw -p smartworker
+
+If you are allowed in, then everything is setup correctly. If not,
+check with the documentation for your DB about how to gain access. There is
+a good tutorial on MySQL and granting access to tables at 
+
+         http://www.devshed.com/Server_Side/MySQL/Administration/
+
+and lots of info on MySQL basics at
+
+         http://www.devshed.com/Server_Side/MySQL/
+
+that you can consult.  Also, feel free to ask the SmartWorker team questions.
+
+Assuming that the user creation went OK, you can now create the tables
+within the database.  To do this, you can use the clean_sw_db.csv file, which
+can be piped into the mysql client like this
+
+         > mysql --host=<databasehost> --user=<you> --password=<yourpassword> \
+                 smartworker < clean_sw_db.csv
+
+If this succeeds, you now have a working SW database!
+
+The final step in the process is to point SmartWorker at your working database.
+You do this in the file conf/sw-perl-startup.pl -  this isn't a good place for it (inside the
+framework), but that's where it is for now.  We will be moving this into the
+conf directory in the future, so please excuse this transgression for a while!
+The conf/sw-perl-startup.pl file is fairly self-explanatory: you just need to edit the
+section that defines the database list:
+
+         %SW::Config::DB_LIST = (
+                 "LOCAL" => {  "host" => "localhost",
+                                         "port" => 3306,
+                                         "database" => "smartworker",
+                                         "username" => "sw",
+                                         "password" => "sw",
+                                         "dbType" => "mysql",
+                         },
+                 "REMOTE" => {  "host" => "testdb.smartworker.org",
+                                         "port" => 3306,
+                                         "database" => "smartworker",
+                                         "username" => "sw",
+                                         "password" => "TestSWDB",
+                                         "dbType" => "mysql",
+                         },
+         );
+
+Change the "LOCAL" definitions to point to your database.  Chances are that you won't
+need to change any of these if you used the defaults.
+
+We have just added a PUBLIC database server that has all the tables set up already.
+You can use that to get a feel for how SmartWorker works, and you can get your feet
+wet helping out with the framework or applications.  If you want to use that, just
+edit your conf/sw-perl-startup.pl  and change the DEFAULT_DB_NAME to "REMOTE".
+
+
+=head1 Starting the server
+
+
+If you have apache running, you're going to have to bring it down and then
+restart it.  You can accomplish this as follows:
+
+         > cd /usr/local/apache
+         > bin/apachectl stop
+         > bin/apachectl start
+
+You can also use the "restart" command
+
+         > bin/apachectl restart
+
+which is shorthand for "stop" then "start". 
+Because mod_perl caches all perl scripts and modules, you often need to restart
+apache when you make changes.  If you change any SmartWorker modules or apps, you need to
+restart the webserver.  We will write up a document explaining how we think the
+development process should go.  In brief, we tend to run separate apache instances on different
+ports, one for each developer, and each developer is free to stop and start his/her
+apache instance at will.  This means that nobody stomps on anyone else's toes.
+
+
+=head1 Installation problems
+
+If you encounter installation problems directly related with the SmartWorker package, by that I don't include
+problem setting-up Apache/mod_perl/MySQL, you can ask the <smartworker@smartworker.org> mailing-list, in
+case someone else encountered a similar problem.  You can also contact me at <gozer@hbe.ca>.
+
+=end

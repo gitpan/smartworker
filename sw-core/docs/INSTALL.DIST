@@ -1,0 +1,10 @@
+# $Id: INSTALL.DIST,v 1.1 1999/09/06 17:55:46 gozer Exp $
+
+These are the intallation instructions for the full SmartWorker package, containing
+both the SmartWorker core modules and SmartWorker applications currently in-store.
+
+Please take the time to read smartworker/INSTALL and sw-apps/INSTALL for more detailled
+information about the installation process of each package.
+
+
+Philippe M. Chiasson <gozer@hbe.ca>

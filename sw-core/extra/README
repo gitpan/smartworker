@@ -1,0 +1,4 @@
+These are standard CPAN modules we had to tweak a bit for SmartWorker.  They are highly recommended, and their
+respective authors have been sent a patch and these modifications should enter CPAN shortly.
+
+For now, these modules will be installed and should be replaced by newer version from CPAN as soon as possible

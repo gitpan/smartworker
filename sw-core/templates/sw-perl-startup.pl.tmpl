@@ -1,0 +1,202 @@
+# $Id: sw-perl-startup.pl,v 1.2 1999/08/21 07:02:02 fhurtubi Exp $
+#
+package SW::Config;
+
+# make sure we are in a sane environment.
+   $ENV{GATEWAY_INTERFACE} =~ /^CGI-Perl/
+     or die "GATEWAY_INTERFACE not Perl!";
+
+#------------------------------------------------------------
+# SW::Config
+# Site Specific Configuration for SmartWorker
+#------------------------------------------------------------
+# $Id: Config.pm,v 1.4 1999/09/05 18:03:11 gozer Exp $
+#------------------------------------------------------------
+
+use strict;
+use vars qw($VERSION @ISA @EXPORT @EXPORT_OK);
+
+require Exporter;
+
+@ISA = qw(Exporter);
+
+@EXPORT_OK = qw (\%DB_LIST $DB_NAME \%DB);
+
+$VERSION = '0.01';
+
+use strict;
+use vars qw(@INC @PerlPassEnv);
+
+sub BEGIN {
+
+	%SW::Config::DB_LIST = (
+	FILL_IN_DB_LIST
+);
+
+$SW::Config::DEFAULT_DB_NAME = "FILL_IN_DEFAULT_DB";
+	
+
+
+$SW::Config::DEFAULT_DB = $SW::Config::DB_LIST{$SW::Config::DEFAULT_DB_NAME};
+
+# $SW::Config::FRAME_TARGET = "_parent";
+
+	$SW::Config::MEDIA_PATH = "/sw_lib";
+
+	$SW::Config::LOGIN_HANDLER = "SW::Login";
+	$SW::Config::SENDMAIL_CMD = "|/usr/lib/sendmail -t";
+
+	$SW::Config::BASE_LOCATION = "FILL_IN_BASE_LOCATION";
+	$SW::Config::SW_LOCATION = $SW::Config::BASE_LOCATION . "/smartworker";
+	
+	$SW::Config::JS_LIB_URI = "/lib/js/";
+
+	$SW::Config::FILE_URI = '/web/';
+	$SW::Config::FILE_SAVE_PATH = $SW::Config::SW_LOCATION . $SW::Config::FILE_URI;
+	$SW::Config::MIMETYPE_FILEPATH = $SW::Config::BASE_LOCATION . '/conf/mime.types';
+	$SW::Config::USERFILE_PATH = '/userfile/';
+
+	$SW::Config::MAX_FILE_SIZE = "400K";
+
+	$SW::Config::Log = 1;
+$SW::Config::MAX_NAME_LEN = 64;
+
+
+#$SW::Config::COOKIE_NAME = 'SmartWorker';
+#hack so the cookies are invalid each time the server starts.. :-)
+#$SW::Config::COOKIE_KEY = "allo toi";
+##$SW::Config::COOKIE_HOST = 'father.hardboiledegg.com';
+#$SW::Config::COOKIE_HOST = 'father.hbe.ca';
+#$SW::Config::COOKIE_IP = '207.139.178.30';
+##This can be a problem, as you have to know the actual name the browser used (father, father.hbe.ca, father.hardboiledegg.com)
+##$SW::Config::COOKIE_PATH = '/';
+#$SW::Config::COOKIE_DURATION = '+15m';
+##$SW::Config::COOKIE_SECURE = 1;
+##WIll be enabled as soon as we can do SSL
+##End cookie stuff
+$SW::Config::MIME_MAGIC = $SW::Config::BASE_LOCATION . "/conf/magic";
+
+
+	%SW::Config::TRANSLATORS = (
+		"GO" 	=> { 	"name" => "Go Translator",
+				"url" => "http://translation.go.com",
+				"start" => "<\/I>[ \t\n]*<P>[ \t\n]*<P>[ \t\n]*<B>[^:]+:<\/B>[ \t\n]*<P>",
+				"end" => "<!--",
+		},
+		"SYSTRANSOFT" 	=> { 	"name" => "Systransoft",
+					"url" => "http://www.onlinetrans.com/freetest.cgi",
+					"start" => "Translated Text in [^:]+:<\/B><BR>",
+					"end" => "[ \t\n]*<BR>[ \t\n]*<BR>[ \t\n]*<\/FONT>[ \t\n]*<!-- 1-->",
+		},
+		"BABELFISH"	=> { 	"name" => "Altavista Babelfish",
+					"url" => "http://babelfish.altavista.digital.com/cgi-bin/translate?",
+					"start" => "<td align=\"left\">[ \t\n]*<br>[ \t\n]*<font face=\"arial, helvetica\">",
+					"end" => "<br><br><\/font><\/td><\/tr>",
+		},
+	);
+				
+	#------------------------------------------------------------
+	# This is a hack:
+	#------------------------------------------------------------
+
+	%SW::Config::Languages = (
+		"en" => [ "English", "en" ],
+		"fr" => [ "French", "Francais", "fr" ],
+		"ch" => [ "Chinese", "Chinois", "ch" ],
+	);
+
+	%SW::Config::CHAR_SET = (
+		"en" => "",
+		"fr" => "",
+		"ch" => "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=big5\">",
+	);
+		
+	#------------------------------------------------------------
+	# end of hack
+	#------------------------------------------------------------
+
+	@SW::Config::USER_LEVELS = ( "User", "User::Manager", "User::Admin", "User::Super");
+}
+
+
+package main;
+use strict;
+use vars qw(@PerlPassEnv);      
+
+# modules we want to try to reload
+
+use Apache::DBI;
+use Apache::Status;
+use Apache::Language;
+use Apache::Filter;
+use DBI;
+
+use SW;
+use SW::Master;
+use SW::Application;
+use SW::User;
+use SW::Login;
+use SW::Session;
+use SW::Group;
+use SW::Data;
+
+use SW::GUIElement;
+use SW::Renderer;
+use SW::Renderer::BaseRenderer;
+use SW::Renderer::DHTMLRenderer;
+use SW::Renderer::HTML3Renderer;
+
+use Apache::SizeLimit;
+# $Apache::SizeLimit::MAX_PROCESS_SIZE = 40000; # in KB, so this is 40MB 
+
+# This takes environment variables and pushes  them into 
+#  the works as an alternative way to set up debugging
+#	levels and targets
+
+push @PerlPassEnv, "DEBUG";
+push @PerlPassEnv, "LEVEL";
+
+
+# Autoload methods go after =cut, and are processed by the autosplit program.
+
+'config ended ok';
+__END__
+# Below is the stub of documentation for your module. You better edit it!
+
+=head1 NAME
+
+SW::Config - Module to allow for system-wide configuration
+
+=head1 SYNOPSIS
+
+  This file should reside in your local config directory with your smartworker.conf
+	and sw-perl-startup.pl files.  It is then require'd in.
+
+
+=head1 DESCRIPTION
+
+SW::Config is used for any system-wide data tables, constants, etc. that 
+are needed by the system and do not change over the course of the lifetime of the
+servers.
+
+
+!!! This module needs some security built into it.  Maybe TIE it and reject access
+from all but a select few modules?  Otherwise Joe Anybody can read the database
+access and pwd info!
+
+Examples of data to store in here are:
+
+-> Constants
+-> List of SW Dta storage locations
+-> Server administrator's email address (!)
+-> Application registry
+
+=head1 AUTHOR
+
+Kyle Dawkins, kyle@hbe.ca
+
+=head1 SEE ALSO
+
+perl(1).
+
+=cut

@@ -1,0 +1,1057 @@
+#  SmartWorker, an Application Framework
+#  Copyright (1999) HBE Software Inc.
+#
+#  This library is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU Lesser General Public
+#  License as published by the Free Software Foundation; either
+#  version 2 of the License, or (at your option) any later version.
+#
+#  This library is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public
+#  License along with this library; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+package SW::Renderer::DHTMLRenderer;
+
+#------------------------------------------------------------
+# SW::Renderer::DHTMLRenderer
+# DHTML rendering class
+#------------------------------------------------------------
+# $Id: DHTMLRenderer.pm,v 1.71 1999/11/22 22:41:14 gozer Exp $
+#------------------------------------------------------------
+
+use strict;
+use vars qw($VERSION @ISA $CSS $JS);
+
+#use SW::Renderer::BaseRenderer;
+
+@ISA = qw(SW::Renderer::BaseRenderer);
+
+$VERSION = '0.01';
+
+my $STYLE = 'DHTML';
+
+sub new
+{
+	my $classname = shift;
+	my $self = $classname->SUPER::new(@_);
+#	bless ($self, $classname);
+	$self->{Style} = $STYLE;
+	return $self;
+}
+
+
+#------------------------------------------------------------
+# renderTreeView
+#------------------------------------------------------------
+
+sub renderTreeView
+{
+	my $self = shift;
+   my $tree = shift;
+	my $data = "";
+
+	my $grid = $SW::Config::MEDIA_PATH."/images/grid.gif";
+
+	$data .= <<"EOF";
+	   
+<STYLE TYPE="text/css">
+<!--
+	   A:link {
+	      text-decoration:none;
+			color: $self->{fgcolor}
+	   }
+
+	   A:visited {
+	      text-decoration:none;
+			color: $self->{fgcolor}
+	   }
+
+	   A:active {
+	      text-decoration:none;
+			color: $self->{fgcolor}
+	   }
+
+     .fldrroot {
+	      font-family: $self->{font} ;
+	      font-weight: normal;
+	      font-size  : 10pt;
+			color : $self->{fgcolor} ;
+	  }
+
+	  .fldritem {
+	       font-family: $self->{font} ;
+	       font-weight: normal;
+	       font-size  : 9pt;
+			color : $self->{fgcolor} 
+	  }
+
+	   BODY {background-image: $grid ;
+				background-repeat: repeat}
+-->
+</STYLE>
+
+EOF
+
+	$data .= "<SCRIPT LANGUAGE=\"JavaScript\" src=\"/sw_lib/mail_tree.js\"></SCRIPT>";
+	$data .= qq/<SCRIPT LANGUAGE="JavaScript">\n/;
+
+	$data .= "foldersTree = new Folder(\"$tree->{name}\",  \"\")\n";
+
+   $data .= $tree->parseTree("foldersTree", $tree->{root});
+
+	$data .= <<"EOF";	
+		initializeDocument();
+</SCRIPT>
+
+EOF
+
+	return $data;
+}
+
+
+#------------------------------------------------------------
+# renderClock
+#------------------------------------------------------------
+
+sub renderClock
+{
+	my $self = shift;
+	my $clock = shift;
+
+	my $data .= <<"EOF";
+
+<span id=tick2>
+</span>
+
+<script>
+<!--
+
+function show2() {
+  var Digital=new Date()
+  var hours = Digital.getHours()
+  var minutes = Digital.getMinutes()
+  var seconds = Digital.getSeconds()
+  var dn="AM"
+  if (hours>12) {
+    dn="PM"
+    hours = hours-12
+  }
+  if (hours==0)
+  hours=12
+  if (minutes<=9)
+	minutes="0"+minutes
+  if (seconds<=9)
+	seconds="0"+seconds
+  var ctime = "<b><font face='Verdana' color='#8000FF'>"+hours+":"+minutes+":"+seconds+" "+dn+"</font></b>"
+  if (!document.all)
+    document.write(ctime)
+  else
+    tick2.innerHTML=ctime
+}
+
+function loadclock()
+{
+	if (document.all)
+	setInterval("show2() ",1000)
+}
+
+if (!document.all)
+	show1()
+//-->
+</script>
+<img src="/images/nothing.gif" height=1 width=1 onLoad="loadclock()">
+EOF
+
+	return $data;
+}
+
+#------------------------------------------------------------
+# displayPanelLayout   
+#------------------------------------------------------------
+
+sub displayPanelLayout
+{
+   my $self = shift;
+	my $panel = shift;
+	my $layout = shift;
+
+		##  all NS4 for now...
+
+	my $data = <<"EOF";
+<STYLE TYPE="text/css">
+  #grid {position:absolute; left:100; top:180; border:solid black 1px; z-index:0; background:yellow}
+
+</STYLE>
+<SCRIPT language="JavaScript">
+var isNav, isIE
+if (parseInt(navigator.appVersion) >= 4) {
+  if (navigator.appName == "Netscape") {
+    isNav = true
+  } else
+  {
+    isIE = true
+  }
+}
+
+// util functions
+
+function setZIndex(obj, zOrder)
+{
+  obj.zIndex = zOrder;
+}
+
+function setBorderColor(obj, color) {
+  obj.borderColor = color
+}
+
+function shiftTo(obj, x, y) 
+{
+  if (isNav) 
+  {
+    obj.moveTo(x,y)
+  } else
+  {
+    obj.pixelLeft = x
+    obj.pixelTop = y
+  }
+}
+
+var selectedObj
+var offsetX, offsetY
+
+function setSelectedElem(evt) 
+{
+  if (isNav)
+  {
+    var clickX = evt.pageX;
+    var clickY = evt.pageY;
+    var testObj
+    for (var i = document.layers.length - 1; i >= 0; i--)
+    {
+        testObj = document.layers[i];
+        if ((clickX > testObj.left) &&
+            (clickX < testObj.left + testObj.clip.width) &&
+            (clickY > testObj.top) &&
+            (clickY < testObj.top + testObj.clip.height)) 
+        {
+            selectedObj = testObj
+            if (selectedObj) 
+            {
+                setBorderColor(selectedObj, "red")
+                setZIndex(selectedObj, 100)
+                return
+            }
+        }
+    }
+  } else
+  {
+    var imgObj = window.event.srcElement;
+    selectedObj = imgObj.parentElement.style
+    if (selectedObj) 
+    {
+        setBorderColor(selectedObj, "red")
+        setZIndex(selectedObj, 100)
+        return
+    }
+  }
+  selectedObj = null
+  return
+}
+
+function dragIt(evt) 
+{
+  if (selectedObj)
+  {
+          if (isNav) 
+          {
+            shiftTo(selectedObj, (evt.pageX - offsetX), (evt.pageY - offsetY))
+          } else
+          {
+            shiftTo(selectedObj, (window.event.clientX - offsetX),
+                                 (window.event.clientY - offsetY))
+            return false
+          }
+  }
+}
+
+function engage(evt) {
+  setSelectedElem(evt)
+  if (selectedObj)
+  {
+        if (isNav)
+        {
+                offsetX = evt.pageX - selectedObj.left
+                offsetY = evt.pageY - selectedObj.top
+        } else
+        {
+                offsetX = window.event.offsetX
+                offsetY = window.event.offsetY
+        }
+	return false
+  }
+}
+
+function release(evt)
+{
+  if (selectedObj)
+  {
+        setZIndex(selectedObj, 0)
+        setBorderColor(selectedObj, "black")
+        selectedObj = null
+	return false
+  }
+}
+
+function hide(evt)
+{
+ 	evt.target.visibility = "hide"
+}
+
+function setNSEventCapture() 
+{
+  if (isNav)
+  {
+        document.captureEvents(Event.MOUSEDOWN | Event.MOUSEMOVE | Event.MOUSEUP)
+  }
+}
+
+function init()
+{
+  if (isNav) 
+  {
+        setNSEventCapture()
+  }
+  document.onmousedown = engage
+  document.onmousemove = dragIt
+  document.onmouseup = release
+  document.ondblclick = hide
+}
+	
+</SCRIPT>
+EOF
+
+
+	$data .= "<div id=grid><layer bgcolor=\"yellow\"> ";
+
+	$data .= "<img src=\"http://www.hbe.ca/assets/images/eggLogo.gif\" align=left border=0 width=15 height=15>";
+	$data .= "<p align=right><img src=\"http://www.hbe.ca/assets/images/eggLogo.gif\" align=right border=0 width=15 height=15></p>";
+	$data .= "<br>Layout Grid";
+	$data .= qq/<table bgcolor=yellow cellpadding=0 cellspacing=0 border=0 id="gridTable" ondblclick="hide(event)">/;
+	$data .= qq/<tr><td><table bgcolor=yellow border=1>/;
+
+
+	for (my $row = 0; $row < $panel->{rows}; $row++)
+	{
+		$data .= "<tr>";
+		for (my $col=0; $col<$panel->{columns}; $col++)
+		{
+			$data .= "<td>".$layout->[$col][$row]."</td>";
+		}
+		$data .= "</tr>";
+	}
+
+
+#	$data .= "</table></td></tr></table></div>";
+	$data .= "</table></td></tr></table></layer></div>";
+
+	return $data;
+}
+
+#-------------------------------------------------------------
+#  renderHTMLPanel
+#------------------------------------------------------------
+
+sub renderHTMLPanel
+{       
+   my $self = shift;
+   my $panel = shift;
+	my $data;
+
+
+  if ($panel->getValue("frame")) 
+  {
+		if (!$panel->getValue("url"))
+		{
+			my $centralData = $self->SUPER::renderHTMLPanel($panel);
+			$data .= "<layer clip=415,600 top=20 left=450 width=415 height=600 name=preview >";
+     		$data .= $centralData;
+			$data .= "</layer>";
+		}
+		else
+		{
+			my $url = $panel->getValue("url");
+			$data .= "<layer src=\"$url\" clip=415,600 top=20 left=450 width=415 height=600 name=preview >";
+			$data .= "</layer>";
+		}
+		$data .= <<'EOD';
+<script language=javascript> 
+  Scrollable.basePath = "/sw_lib/js_lib/ns4/scroll/images/";
+  var c= new Scrollable(document.preview); 
+</script>
+EOD
+
+  }
+  elsif ($panel->getValue("window"))
+  {
+		my $centralData = $self->SUPER::renderHTMLPanel($panel);
+		$data .= $self->renderWindowHeader($panel);
+		$data .= $centralData;
+		$data .= $self->renderWindowFooter($panel);
+	}
+   else
+   {
+		my $centralData = $self->SUPER::renderHTMLPanel($panel);
+		$data .= $centralData;
+   }
+
+  return $data;
+}
+
+#-------------------------------------------------------------
+#  renderFormPanel
+#------------------------------------------------------------
+
+sub renderFormPanel
+{
+   my $self = shift;
+   my $panel = shift;
+
+   if ($panel->getValue("window"))
+   {
+      my $data = "";
+      $data = $self->renderWindowHeader($panel);
+      $data .= $self->SUPER::renderFormPanel($panel);
+      $data .= $self->renderWindowFooter($panel);
+
+      return $data;
+  } else
+  {
+      return $self->SUPER::renderFormPanel($panel);
+  }
+}
+
+
+#------------------------------------------------------------
+# renderWindowHeader
+#------------------------------------------------------------
+
+sub renderWindowHeader
+{
+	my $self = shift;
+	my $panel = shift;
+	my $data = "";
+
+	my $TITLEBARHEIGHT = 20;
+
+	my $width = $panel->getValue("width") || 400;
+	my $height = $panel->getValue("height") || 400;
+	my $scrollHeight = $height - $TITLEBARHEIGHT;
+	my $titleSpread = $width - 176;
+	my $name = $panel->getValue("window");
+
+	$data .= <<"EOF";
+<STYLE TYPE="text/css">
+<!--
+    #DRAG$name {                      /* "DRAG" anywhere in name makes it draggable */
+        position: absolute;
+        left: 240; top: 200;          /* fake values, for example only */
+        background-color: white;        /* standard CSS for Explorer */
+        layer-background-color: black;  /* proprietary CSS for Navigator */
+        color: white;
+        width: $width;
+        height: $height;
+        font-weight: bold;
+        text-align: center;
+        z-index: 1;
+        clip: rect(0 $width $height 0)    }
+    #elScrollPane
+    {
+        overflow: scroll;
+        left: 0;
+        top: 20;
+        width: $width;
+        height: $scrollHeight;
+    }
+-->
+</STYLE>
+<DIV ID="DRAG$name">
+<img id="Drag1" width=156 src="/images/title_cut.png"><img id="Drag2" width=$titleSpread height=20 src="/images/middle.png"><img id="Drag3" width=20 src="/images/close.png">
+<div id="elScrollPane" align=left>
+EOF
+	return $data;
+}
+
+#------------------------------------------------------------
+# renderWindowFooter
+#------------------------------------------------------------
+
+sub renderWindowFooter
+{
+   my $self = shift;
+   my $panel = shift;
+	my $name = $panel->getValue("name");
+
+   my $data = <<"EOL";
+</div></div>
+<SCRIPT LANGUAGE="JavaScript" SRC="/sw_lib/dragDrop.js"></SCRIPT>;
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+   activeEl = (IE4) ? document.all.DRAG$name : document.DRAG$name
+//-->
+</SCRIPT>
+EOL
+
+   return $data;
+}
+
+
+
+#-------------------------------------------------------------
+#  renderPanel
+#
+#  !!!!!!!! Fix the divergence problems between here and BaseRenderer
+#------------------------------------------------------------
+
+sub renderPanel
+{
+	my ($self, $panel) = @_;
+	my $background;
+   my $data;
+
+	if ($panel->getValue("background") eq 'NULL')
+	{
+		$background = ""
+	}
+	elsif ($panel->getValue("background") eq undef) 
+	{
+		$background = ""
+	}
+	else
+	{
+#		$background = "background='" . $SW::Config::MEDIA_PATH.$panel->{background} . "'";
+		$background = qq/background="/.$panel->getValue("background").qq/"/;
+		my $div;
+	}
+
+	my $div;
+	if ($panel->{masterPanel})   # if this is the top level html
+	{
+		my $title = $panel->getValue('name');
+
+		my $col;
+
+		if($panel->getValue("bodyBgColor"))
+		{
+			$col = $panel->getValue("bodyBgColor");
+		} else
+		{
+			$col = $self->{bgcolor} unless $panel->getValue("noBgColor");
+		}
+
+		my $textColor = $self->{textColor} || $panel->getValue('textColor');
+
+		my $link = $panel->getValue('link') || "#0000BB";
+		my $vlink = $panel->getValue('vlink') || "#BB0000";
+		my $alink = $panel->getValue('alink') || "#00BB00";
+
+		# Check if there is javascript lib to load
+		my $jsLibs = $panel->getValue('jsLib');
+
+		my $javaScriptCode;
+        	if ($jsLibs)
+		{
+			foreach my $lib (@{$jsLibs}) {
+				$javaScriptCode = qq{<script language="Javascript" src="}.$SW::Config::JS_LIB_URI.qq{$lib"></script>\n};
+			}
+		}
+
+		my $cssLib = $panel->getValue('cssLib');
+		
+		my $cssCode;
+		if ($cssLib) {
+			foreach my $lib (@{$cssLib}) {
+		       		if (!$CSS->{$lib}) {
+						print STDERR "/lib/css/$lib";
+						$CSS->{$lib} .= qq|<LINK HREF="$SW::Config::CSS_LIB_URI/$lib" REL="stylesheet" TYPE="text/css">|;
+				}
+				$cssCode .= $CSS->{$lib}."\n";
+			}
+		}
+
+		$div->{name} = $panel->getValue('divName');
+
+		if ($div->{name}) {
+			$div->{start} = qq{<DIV ID="$div->{name}">};
+			$div->{end} = qq{</DIV>};
+		}
+
+		my $preRenderCode = $panel->getValue("preRenderCode");
+
+		my $margins;
+		if ($panel->getValue("zeroMargin")) {
+			$margins = qq/leftmargin="0" bottommargin="0" rightmargin="0" topmargin="0" marginwidth = "0" marginheight = "0"/;
+		}
+		
+      #ADDED BY gozer POPUP
+		my $popupCode = $self->getPopupCode();
+		
+		my $onLoad = qq/onLoad="/.$panel->getValue("onLoad").qq/"/ if ($panel->getValue("onLoad"));
+		my $onResize = qq/onResize="/.$panel->getValue("onResize").qq/"/ if ($panel->getValue("onResize"));
+		my $onBlur = qq/onBlur="/.$panel->getValue("onBlur").qq/"/ if ($panel->getValue("onBlur"));
+		my $bodyParam = $panel->getValue("bodyParam");
+
+		$data = <<"EOF";
+<HTML>
+<HEAD>
+<TITLE>$title</TITLE>
+$cssCode
+<SCRIPT LANGUAGE="Javascript1.2" src="/sw_lib/js_lib/ns4/scroll/scrollable.js"></script>
+$popupCode
+$javaScriptCode
+$preRenderCode
+</HEAD>
+<BODY $margins TEXT="$textColor" $background BGCOLOR="$col" LINK="$link" VLINK="$vlink" ALINK="$alink" $onLoad $onResize $onBlur $bodyParam>
+$div->{start}
+EOF
+# onLoad="init()"
+	} 
+	if ($panel->{window})
+	{
+		$data .= $self->renderWindowHeader($panel);
+	}
+	$data = $self->_renderPanelCore($panel, $data) . "</table>\n";
+
+	if ($panel->{window})
+	{
+		$data .= $self->renderWindowFooter($panel);
+	}
+	$data .= "$div->{end}</BODY>\n</HTML>";
+
+	return $data;
+
+}
+        
+#-------------------------------------------------------------
+#  _renderPanelCore
+#------------------------------------------------------------
+ 
+sub _renderPanelCore
+{
+	my $self = shift;
+	my $panel = shift;
+	my $data = shift;
+	my $elements = $panel->{elements};
+	my ($cols, $rows) = $panel->getSize();
+
+	my ($yLayout, $xLayout, $debugLayout) = $self->layoutPanel($panel);
+
+	if ($panel->getValue("debug_layout_grid") eq "true")
+	{
+		$data .= $self->displayPanelLayout($panel, $debugLayout);
+	}
+
+	$data .= "<TABLE";
+
+# we dont want to force the panel to be width 100%
+	if ($panel->{masterPanel}) 
+	{
+# 	    $data .= " width=100%";
+	}
+
+	my $border = $panel->getValue('border') || '0';
+	my $padding = $panel->getValue('padding') || '0';
+	my $spacing = $panel->getValue('spacing') || '0';
+	my $bgColor = $panel->getValue('bgColor');
+	my $width = $panel->getValue('panelWidth') || $panel->getValue('width');
+	my $height = $panel->getValue('panelHeight'); # boum hack
+
+	my $defaultCSSClass;
+	if ($panel->{masterPanel}) {
+		$defaultCSSClass = $panel->getValue('defaultCSSClass');
+	} else {
+		my $mainPanel = $self->{theApp}->getPanel();
+		$defaultCSSClass = $mainPanel->getValue('defaultCSSClass');
+	}
+#SW::debug ($self, "DHTML DEFAULT CSS CLASS = $defaultCSSClass", 3);
+
+	$data .= " BORDER=$border";
+#	$data .= " BORDER=1";
+	$data .= " CELLPADDING=$padding";
+	$data .= " CELLSPACING=$spacing";
+	if ($width) { $data .= " WIDTH=$width"; }
+	if ($height) { $data .= " HEIGHT=$height"; }
+
+	if ($bgColor) { $data .= " BGCOLOR=$bgColor"; }
+
+	$data .= ">\n";
+
+	for (my $y=0; $y<$rows; $y++)
+	{
+		$data .= "<TR>\n";
+
+		for (my $x=0; $x<$cols; $x++)
+		{
+			if (! $yLayout->[$x][$y])
+			{
+				next;
+			}
+
+			if (! $panel->{elements}[$x][$y])
+			{
+				$data .= "<TD></TD>";
+			} else	
+			{
+
+				if (! $panel->{elements}[$x][$y]->visible)
+				{
+					 $data .= "<TD></TD>";
+				} else
+				{
+					my $elColspan = $xLayout->[$x][$y];
+					my $elRowspan = $yLayout->[$x][$y];
+					my $elAlign = $panel->{elements}[$x][$y]->getValue('align');
+					my $elVAlign = $panel->{elements}[$x][$y]->getValue('valign');
+					my $elBgColor = $panel->{elements}[$x][$y]->getValue('bgColor');
+					my $elbg = $panel->{elements}[$x][$y]->getValue('background');
+					my $elWidth = $panel->{elements}[$x][$y]->getValue('width');
+					my $elHeight = $panel->{elements}[$x][$y]->getValue('height');
+					my $elStyle = $panel->{elements}[$x][$y]->getValue('style');
+					my $elClass = $panel->{elements}[$x][$y]->getValue('class');
+
+					$data .= qq/<TD/;
+
+					if ($elStyle) { 
+						$data .= qq/ STYLE="$elStyle"/;
+					}
+
+					if ($elClass) { $data .= qq/ CLASS="$elClass"/; }
+					elsif ($defaultCSSClass) { $data .= qq/ CLASS="$defaultCSSClass"/; }
+
+					if($elColspan>1)
+					{
+						$data .= " COLSPAN=$elColspan";
+					}
+					if($elRowspan>1)
+					{
+						$data .= " ROWSPAN=$elRowspan";
+					}
+
+					if($elWidth)
+					{
+						$data .= " WIDTH=\"$elWidth\"";
+					}
+
+					if($elHeight)
+					{
+						$data .= " HEIGHT=\"$elHeight\"";
+					}
+
+					if($elAlign)
+					{
+						$data .= " ALIGN=\"$elAlign\"";
+					}
+
+					if($elVAlign)
+					{
+						$data .= " VALIGN=\"$elVAlign\"";
+					}
+
+					if ($elbg)
+					{
+						$data .= qq/ VALIGN="$elVAlign" BGCOLOR="$elBgColor"/;
+						$data .= " BACKGROUND=\"$elbg\"";
+					}
+					elsif ($elBgColor)
+					{
+						$data .= " BGCOLOR=\"$elBgColor\"";
+					}
+
+					$data .= ">";
+
+					if($self->{font} || $self->{fontsize})
+					{
+						$data .= "<FONT";
+
+						if($self->{font})
+						{
+							$data .= " FACE=\"$self->{font}\"";
+						}
+
+						if($self->{fontsize})
+						{
+							$data .= " SIZE=$self->{fontsize}";
+						}
+					}
+
+					$data .= $panel->{elements}[$x][$y]->render($self);
+
+					if($self->{font} || $self->{fontsize})
+					{
+						$data .= "</FONT>";
+					}
+
+					$data .= "</TD>\n";
+				}
+			}
+		}
+      $data .= "</TR>\n";
+	}
+
+   return $data;
+}
+
+
+
+
+1;
+
+__END__
+
+=head1 NAME
+
+SW::Renderer::DHTMLRenderer - Perl extension for blah blah blah
+
+=head1 SYNOPSIS
+
+  use SW::Renderer::DHTMLRenderer;
+
+  (initialized by Renderer based on the agent string passed to it)
+
+  $self->{renderer} = new SW::Renderer::DHTMLRenderer($Application, $Browser);
+
+
+=head1 DESCRIPTION
+
+SmartWorker DHTML rendering class,  as of yet inclomplete,  inheriting everything from BaseRenderer ( HTML 3 format)
+
+
+=head1 REVISION HISTORY
+
+	$Log: DHTMLRenderer.pm,v $
+	Revision 1.71  1999/11/22 22:41:14  gozer
+	Modified the renderes so the CSS stuff is now a hard link of the form:
+	<LINK HREF="/lib/css/opendesk.css" REL="stylesheet" TYPE="text/css">
+	
+	Revision 1.70  1999/11/22 17:14:09  fhurtubi
+	Background color will not be set if the noColor argument is set to true on a
+	panel object
+	
+	Revision 1.69  1999/11/15 18:17:33  gozer
+	Added Liscence on pm files
+	
+	Revision 1.68  1999/10/25 08:26:50  fhurtubi
+	Added onBlur et bodyParams (for other tags) for both Base and DHTML Renderers..
+	Also, JS code is not included anymore but read from a src file
+	
+	Revision 1.67  1999/10/24 23:24:36  matju
+	wriougsn
+	
+	Revision 1.66  1999/10/24 23:22:08  fhurtubi
+	Typo (Congif instead of Config) for the jslib thing...
+	
+	Revision 1.65  1999/10/23 22:02:02  gozer
+	Added support for onResize for the <BODY> tag
+	
+	Revision 1.64  1999/10/22 20:43:50  fhurtubi
+	Added the onLoad argument for panels
+	
+	Revision 1.63  1999/10/20 06:41:16  fhurtubi
+	Missing some margins for the zeroMargin argument in renderPanelCore
+	
+	Revision 1.62  1999/10/18 22:30:36  fhurtubi
+	used a foreach instead of a while (as I was shifting through the elements and one
+	variable might have been global)
+	
+	Revision 1.61  1999/10/17 09:45:44  fhurtubi
+	Removed mention of Javascript 1.2
+	
+	Revision 1.60  1999/10/13 04:19:49  fhurtubi
+	Added the alink property (it was there, it was not used!)
+	
+	Revision 1.59  1999/10/13 02:58:05  fhurtubi
+	Changed tableWIdth to panelWidth
+	
+	Revision 1.58  1999/10/09 21:14:11  gozer
+	Modified the popup-generating code a bit :-)
+	
+	Revision 1.57  1999/10/09 02:56:06  gozer
+	Added pop-up windows first prototype, functionnal, but not very robust/configurable.  But they work!
+	
+	Revision 1.56  1999/10/04 22:50:08  fhurtubi
+	If you want to remove the ugly white space Netscape puts on top of a page, set zeroMargin parameter to 1 in your panel and it
+	will force margins to be 0 width. Also, i removed the setting of the main panel to 100%. You'll have to force it if you want
+	to have it. I also added a new parameter called tableWidth (in the tradition of Image iwidth). If you want to set a panel to a
+	certain width but not it's cell width, use tableWidth
+	
+	Revision 1.55  1999/09/22 00:18:09  jzmrotchek
+	Fixed bug with background image processing.
+	
+	Revision 1.54  1999/09/17 00:46:43  fhurtubi
+	Added property to main panel (bodyBgColor)
+	
+	Revision 1.53  1999/09/15 21:34:29  fhurtubi
+	Fixes a bug I think..I will check it back later...works great for now
+	
+	Revision 1.52  1999/09/14 02:18:23  fhurtubi
+	Changed / Added CSS things
+	
+	Revision 1.51  1999/09/13 07:07:58  fhurtubi
+	Added a default CSS property
+	
+	Revision 1.50  1999/09/12 22:31:20  krapht
+	Removed the renderLink (it seems the only difference between this one and
+	BaseRenderer is the window spawning function, which is not necessarily what
+	we want!).  Also added some checking on TD rendering (align and valign)
+	
+	Revision 1.49  1999/09/12 01:21:20  fhurtubi
+	Added a style and class parameter to both BaseRenderer and DHTMLRenderer
+	(this is a CSS thing)
+	
+	Revision 1.48  1999/09/11 19:19:19  gozer
+	emoved one '.' that made the <HTML><HEAD></HEAD></HTML> repeaded twice :-(
+	
+	Revision 1.47  1999/09/11 08:44:37  gozer
+	Made a whole bunch of little kwirps.
+	Fixed Handler to deal correctly with SW_App_Namespace without defaulting to SW::App when the var is set
+	Fixed the bug that made Login.pm create an empty hidden argument on every login attempt
+	Added a whole bunch of modules preloading in sw-perl-startup, good speed improvment
+	Fixed a few warning here and there.  Only one missing the sweep.  Application.pm and AUTOLOAD warning ?!?
+	Changed the SW::Util::flatten and circular_flatten to succesfully use Data::Dumper ;-} (-180 lines of code)
+	Gone to bed very late
+	
+	Revision 1.46  1999/09/10 21:56:09  fhurtubi
+	Ok, Sorry guys, I had a big error in there...
+	It's fixed now.. (cssLib not being defined)
+	
+	Revision 1.45  1999/09/10 20:28:36  fhurtubi
+	Changed CSS data collection so it can accept an anonymous array now. This will let
+	developpers use multiple CSS.
+	
+	Revision 1.44  1999/09/10 19:43:56  fhurtubi
+	Added CSS functionnality. Right now, there is a global hash ref that
+	will be populated by panel defined CSS. If the asked CSS exists, it returns
+	it, otherwise, it loads the file then returns it. That way, we don't need
+	to open the file at every transaction. Problem is that it might take a lot
+	of memory in the long run...
+	
+	In your app, just go:
+	
+	$panel->setValue("cssLib", "lib.css");
+	
+	that lib must be under the distribution css_lib directory
+	(/smartworker/lib/css_lib/)
+	
+	Revision 1.43  1999/09/09 02:10:31  fhurtubi
+	Added the width parameter for the panel creation.
+	By default, it used to be 100%, but I removed that because that might not be
+	always the case...
+	
+	Revision 1.42  1999/09/08 18:42:13  krapht
+	Fixed a problem with renderLink (swURI --> URI), and font and fontSize can
+	now be declared for DHTMLRenderer
+	
+	Revision 1.41  1999/09/08 18:13:06  krapht
+	Fixed a form bug in BaseRenderer that caused an additional line to be added
+	to tables, and changed the font attribute for Text and Link objects
+	
+	Revision 1.40  1999/09/08 16:41:00  krapht
+	Fixed a bug in _renderPanelCore.  It was outputting a </TR> tag at a place
+	where it should have been </TD>.
+	
+	Revision 1.39  1999/09/08 02:11:00  krapht
+	Fixed the problems with font attributes in BaseRenderer, and added a small
+	line in DHTML (can't remember where!)
+	
+	Revision 1.38  1999/09/05 01:28:42  fhurtubi
+	Text color can be set for the main panel by setting textColor to the color you want
+	
+	Revision 1.37  1999/09/05 00:13:00  krapht
+	Added some border adjustment, missing HTML tags (body and html finish tags)
+	
+	Revision 1.36  1999/09/01 21:38:44  krapht
+	Changed ref to name, target to signal for internal links!
+	
+	Revision 1.35  1999/09/01 01:26:56  krapht
+	Hahahahha, removed this %#*(!&()*$& autoloader shit!
+	
+	Revision 1.34  1999/08/31 15:01:29  krapht
+	Removed another stupid bug, Fred's fault this time!
+	
+	Revision 1.33  1999/08/31 14:26:33  krapht
+	Removed a stupid bug I put there by mistake!
+	
+	Revision 1.32  1999/08/30 23:32:36  fhurtubi
+	Removed what Krapht just did because its not working
+	
+	Revision 1.31  1999/08/30 22:48:22  krapht
+	Changed the way attributes are set in renderLink
+	
+	Revision 1.30  1999/08/30 21:54:51  krapht
+	Added a alink part to masterPanel
+	
+	Revision 1.29  1999/08/30 21:49:28  krapht
+	Corrected a small bug in renderPanel for link and vlink in masterPanel
+	
+	Revision 1.28  1999/08/30 21:43:15  krapht
+	Added the possibility to change the link color value
+	
+	Revision 1.27  1999/08/30 19:59:22  krapht
+	Removed the Exporter stuff
+	
+	Revision 1.26  1999/08/30 16:32:57  krapht
+	Changed some stuff in renderPanelCore
+	
+	Revision 1.25  1999/08/30 00:59:12  krapht
+	Modified some lines in renderPanel so we can specify a foreground (i.e. text)
+	color if none was specified by the user
+	
+	Revision 1.24  1999/08/27 23:07:47  krapht
+	Added the possibility to set cellpadding and cellspacing on tables
+	
+	Revision 1.23  1999/08/27 22:33:44  fhurtubi
+	Added a JS check in both BaseRenderer and DHTMLRenderer... we should have
+	one inherit from the other one though :(((
+	
+	Revision 1.22  1999/08/18 20:20:50  krapht
+	Added a little hack to get centered text!  Might be done differently!
+	
+	Revision 1.21  1999/08/17 05:21:34  scott
+	Removed the huge image from the background ....
+	
+	Revision 1.20  1999/08/11 18:36:17  krapht
+	Changed some font rendering stuff (hardcoded size, etc.)
+	
+	Revision 1.19  1999/07/21 14:30:17  krapht
+	*** empty log message ***
+	
+	Revision 1.18  1999/07/08 15:52:17  krapht
+	Changed ; for # in commented line...(Scott's been doing too much DNS
+	lately!)
+	
+	Revision 1.17  1999/07/02 21:47:09  jzmrotchek
+	Fixed up the BODY tag generation system some, notably the 'background' subtag generation scheme.  Presently will use the default image if $panel->setValue("background") is not set, and will NOT use a background subtag whatsoever if $panel->setValue("background") equals 'NULL'.  This should be added to the docs, but hasn't been yet.
+	
+	Revision 1.16  1999/06/28 21:19:20  scott
+	Fixed some bugs with the BODY tag in DHTML Renderer -- this is a mess!
+	needs more attention
+	
+	Revision 1.15  1999/06/18 15:28:02  scott
+	Starting to fix some stuff for the new DHTML rendering in wiondows
+	
+
+=head1 AUTHOR
+
+Scott Wilson
+HBE
+Feb 8/99
+
+=head1 SEE ALSO
+
+perl(1).
+
+=cut

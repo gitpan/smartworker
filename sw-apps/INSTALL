@@ -1,0 +1,20 @@
+# $Id: INSTALL.AP,v 1.2 1999/09/06 17:55:46 gozer Exp $
+
+=head1   SmartWorker Applications Install Instructions 
+
+This is a bundle of the SW::App currently developped here.  Install it
+like any other perl module package.  All the installed applications will
+end up in your regular perl tree under the SW::App::* namespace.  You can override
+this setting with the PREFIX=/other/perl/dir option to the Makefile.PL invocation
+
+=over 3
+
+=item perl Makefile.PL  or perl Makefile.PL PREFIX=/other/perl/dir [other oprions]
+
+=item make
+
+=item make test
+
+=item make install
+
+=end

@@ -1,0 +1,24 @@
+# Attribute Naming Conventions
+
+# Scott, Fred, JF - Mon Aug 30, 1999
+
+# $Id: naming_conventions.pod,v 1.2 1999/09/03 14:51:31 scott Exp $
+
+=head1 Parameter Naming Conventions
+
+=over 1
+
+=item B<name> - Component name ( panel, apps, GUIElements etc...) also eq 
+name field in HTML form element for GUIElements.
+
+=item B<signal> - identifier of callback to be triggered
+
+=item B<text> - Text value 
+
+=item B<target> - URL in LinkExternal ONLY!
+
+=item B<swUri> - NEW for internal SmartWorker Uri's (especially Link)
+
+=item  B<ref> - /dev/null
+
+=back

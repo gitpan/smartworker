@@ -1,0 +1,1521 @@
+#  SmartWorker, an Application Framework
+#  Copyright (1999) HBE Software Inc.
+#
+#  This library is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU Lesser General Public
+#  License as published by the Free Software Foundation; either
+#  version 2 of the License, or (at your option) any later version.
+#
+#  This library is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  Lesser General Public License for more details.
+#
+#  You should have received a copy of the GNU Lesser General Public
+#  License along with this library; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+package SW::Master;
+
+#------------------------------------------------------------
+# SW::Master
+# Main framework class for SmartWorker
+#------------------------------------------------------------
+# $Id: Master.pm,v 1.70 1999/11/15 18:17:33 gozer Exp $
+#------------------------------------------------------------
+
+use strict;
+use vars qw($VERSION);
+
+use Apache;
+use Apache::Constants qw(:common);
+use DBI;
+use CGI '-autoload';
+
+use SW;
+use SW::Panel;
+use SW::Session;
+use SW::User;
+use SW::Util;
+use SW::Component;
+use SW::AppRegistry;
+use SW::DB;
+use Data::Dumper;
+
+$VERSION = '0.01';
+
+
+#------------------------------------------------------------
+# new
+#------------------------------------------------------------
+
+sub new
+{
+	my ($SWClassName, $apClassName, @args) = @_;
+
+	my $self = {
+					className => $SWClassName,
+					theApp => undef,
+					package => $apClassName,
+					cookies => [],
+					appendages => {},
+					documents => [],
+					objects => {},
+					objectCounter => '0',
+					params => {
+						   visible => 1,
+						  },
+					};
+
+	# Bless this reference
+	
+	bless $self, $SWClassName;
+	
+	
+	# Ensure that we are connected to the database.  This will be
+	# done later on in the startup/config stuff.
+	# Remember that the database will be opened this first time
+	# this call is reached, and HELD OPEN until the Apache process is
+	# stopped for whatever reason.  And there is NO NEED to close the
+	# connection because the $dbh->disconnect method is ignored anyway.
+
+	#It was about time this old thing was removed, but just in case...
+	#$self->{dbh} = getDbh();
+
+	$self->{appRegistry} = new SW::AppRegistry($self);
+
+	# Process Configuration Directives, incl setting debug mode
+	$self->processConfigurationDirectives();	
+
+	return $self;
+}
+
+
+#------------------------------------------------------------
+# processConfigurationDirectives
+#------------------------------------------------------------
+
+sub processConfigurationDirectives
+{
+	my $self = shift;
+
+	if (SW->data->{debug})
+	{
+		my @debug_targets = split(',',SW->data->{debug});
+		$self->{debugTypes} = \@debug_targets;
+		$self->addAppendage("debug", SW->data->{debug});
+	}
+	if (SW->data->{debugLevel})
+	{
+		$self->{debugLevel} = SW->data->{debugLevel};
+		$self->addAppendage("debugLevel", $self->{debugLevel});
+	}
+	if (SW->data->{renderStyle})
+	{
+		$self->addAppendage("renderStyle", SW->data->{renderStyle});
+	}
+
+}
+
+
+#------------------------------------------------------------
+# go
+# This method handles the basic guts of the application,
+# deciding which functions to call and why
+#------------------------------------------------------------
+	
+sub go
+{
+	my ($self,$abort) = @_;
+
+	SW::debug($self, "GO", 4);
+
+	if (!$self->{child})
+	{
+		SW::debug($self, "Error - no child display application: use \$master->setChild(\$app)", 1);
+		return 0;
+	}
+
+	$self->trickleState('InitApplication');
+
+	$self->trickleState('InitInstance');
+	
+	$self->trickleState('InitTransaction');
+
+	$self->runTransaction();
+
+	$self->trickleState('SaveState');
+	
+	$self->trickleState('Render');
+
+	$self->trickleState('CleanUp');
+}
+
+#------------------------------------------------------------------#
+# setPref
+#------------------------------------------------------------------#
+
+#sub setPref {
+#    my $self      = shift;
+#    my $prefkey   = shift; 
+#    my $prefvalue = shift;
+#
+#    $self->{user}->{dirty} = 1;  # Set user value saver on.
+#
+#    return $self->{user}->{preferences}->setGlobalPref($prefkey,$prefvalue);
+#}
+
+
+#------------------------------------------------------------------#
+# getPref
+#------------------------------------------------------------------#
+#sub getPref {
+#    my $self    = shift;
+#    my $prefkey = shift;
+#    
+#    return $self->{user}->{preferences}->getGlobalPref($prefkey);
+#}
+
+
+#------------------------------------------------------------
+# HACK
+#------------------------------------------------------------
+
+sub getMaster
+{
+	print STDERR "getMaster: function deprecated, use SW->master instead\n";
+	return SW->master();
+}
+
+#------------------------------------------------------------
+# registerObject
+#
+#    for now called only by buildTable (generated by SW::Util::Prep)
+#
+#  TODO:  add some parameter checking
+#------------------------------------------------------------
+
+sub registerObject
+{
+	my $self = shift;
+	my $obj = shift;
+
+	$self->{transObjects}->{$obj->{package}} = $obj;
+	SW::debug($self, "Registered object ".ref($obj)." as ".$obj->{package}, 4);
+	return;
+
+}
+
+#-------------------------------------------------------------
+#   invoke a signal on an object ... adds the call to that into
+#		the table....
+#-------------------------------------------------------------
+
+sub sendSignal
+{
+	my ($self,$caller,$signame) = @_;
+
+	if (!$signame =~ /::/g)
+   {
+      $signame = 'action::'.$signame.'::'.$caller->{package};
+   }
+	SW::debug($self, "attempting to add signal $signame",4);
+
+	if ($self->_insertSignal($signame, @_))
+	{
+		SW::debug($self, "success adding internal signal $signame",4);
+	}
+	else
+	{
+		unshift @{$self->{signalsPending}}, $signame;
+		unshift @{$self->{signalArguments}->{$signame}}, @_;
+	}
+}
+
+
+#-------------------------------------------------------------
+#   setChild - sets the single child application
+#-------------------------------------------------------------
+
+sub setChild
+{
+	my ($self,$child) = @_;
+
+	$self->{child} = $child;
+	$child->getPanel()->setValue("master", "true");
+	SW::debug($self, "master's single child set to $child", 5);
+}
+
+
+#-------------------------------------------------------------
+# deleteChild
+#-------------------------------------------------------------
+
+sub removeChild
+{
+	delete($_[0]->{child});
+}
+
+
+#------------------------------------------------------------
+# _insertSignal - method
+#
+# INTERNAL USE ONLY
+#
+# Takes care of inserting signals for callbacks
+#------------------------------------------------------------
+
+sub _insertSignal
+{
+	my ($self,$signame,@args) = @_;
+	
+	if ($self->{signalArguments}->{$signame})
+	{
+		@args = @{$self->{signalArguments}->{$signame}};
+	}
+
+	# this lobotomizes image buttons - it would be a better idea
+	# to actually implemenet them down the road.....
+
+	return if $signame =~ /\.y$/;  # HACK
+	$signame =~ s/\.x$//;          # HACK
+	
+	if ($signame =~ /^action\:\:(\w+)\:\:(.+)/)
+	{
+		my $signal = $1;
+		my $objPath = $2;
+		SW::debug($self,"Processing signame $signame",5);
+
+		if (! $self->{transObjects}->{$objPath})
+		{
+			SW::debug($self, "object $objPath is not registered - defering", 5);
+			return 0;
+		}
+		else
+		{
+			# Every callback signal comes here, but in the foreach loop, not everyone
+			# one is successful
+
+			my $signalFound = 0;
+
+			#This is really cryptic, but it takes looks up the code ref in
+			# the {_FN_TABLE}->{callBack} for a given relevant submitted
+			# object and reregisters it in the {_FN_TABLE}->{transOrder} 
+			# hash so it'll get executed ... WRITE A FUNCTION to do this!
+
+			my $obj = $self->{transObjects}->{$objPath};
+
+			foreach my $rec (@{$obj->{_FN_TABLE}->{callBack}->{$signal}})
+			{
+				my $cref = $rec->{code};
+				my $order = $rec->{order};
+				$rec->{callingSignal} = $signame;
+				$rec->{params} = \@args;
+				unshift @{$obj->{_FN_TABLE}->{transOrder}->{$order}}, $rec;
+				SW::debug($self,"_insertSignal - Added catch for $signal at $order ($cref)",5);
+
+				$signalFound = 1;
+			}
+
+			# If callback not found, set appState session value to name of callback
+			if (! $signalFound)
+			{
+				SW->session->setPrivateValueOnBehalfOf($self->{package},"appState",$signal);
+			}
+		}
+	}
+	return 1;
+}
+
+
+#-------------------------------------------------------------
+# runTransaction - method
+#-------------------------------------------------------------
+
+sub runTransaction
+{
+	my $self = shift;
+	my $signals = {};
+   my $submitted = SW->data->{_submitted};
+	
+	$self->{transactionRunning} = 1;
+
+   # deal with incoming arguments (if there are any)
+
+	
+	
+	#foreach my $name (keys %{SW->data})
+	#{
+	#	if (($name =~ /^action.*/) || ($name =~ /^value.*/))
+	#	{
+	#		unshift @{$self->{signalsPending}}, $name;
+	#	}
+	#}
+
+	unshift @{$self->{signalsPending}} , grep { /^(action|value).*/ } keys %{SW->data};
+
+
+	#do the same for signals we've persisted in the session
+   if (my $signals = SW->session->getGlobalValue("signals"))
+		{
+		foreach my $name (keys %{$signals})
+			{
+				unshift @{$self->{signalsPending}}, $name;
+				delete SW->session->getGlobalValue("signals")->{$name};
+			}
+		}
+		
+	# step through the transaction order
+	
+	for (my $i=0; $i<25; $i++)
+	{
+		if  ($self->{signalsPending})
+		{
+			my $signals = $self->{signalsPending};
+			my $unsuccessfulSignals = ();
+			# try to insert the signals...
+			while (@$signals)
+			{
+				my $sig = shift @$signals;
+				SW::debug($self,"trying to register signal $sig",5);
+				$self->_insertSignal($sig) ? SW::debug($self,"success inserting signal $sig",5) :
+													  unshift @$unsuccessfulSignals, $sig;
+			}
+			$self->{signalsPending} = $unsuccessfulSignals;
+		}
+
+		
+		# actually look for something to run ....
+		foreach my $objName (keys %{$self->{transObjects}})
+		{
+			my $obj = $self->{transObjects}->{$objName};
+			if ($obj->{_FN_TABLE}->{transOrder}->{"$i"})
+			{
+				SW::debug($self,"found a call for $objName at $i",5);
+				print STDERR "found a call for $objName at $i";
+				foreach my $rec (@{$obj->{_FN_TABLE}->{transOrder}->{"$i"}})
+				{
+					my $cref = $rec->{code};
+					my $params = $rec->{params};
+					if ($params)
+					{
+						SW::debug($self,"params[0]: ".$params->[0]."  ".$rec->{params},5);
+					}
+	
+					my $result = $obj->$cref(@$params);
+			
+					if ($result eq "persist")
+					{
+						my $sig = $rec->{callingSignal};
+						$signals->{$sig} = $i;
+						#SW->session->getGlobalValue("signals")->{$sig} = $i;
+					}
+				}
+			} 
+		}
+	}
+	SW->session->setGlobalValue("signals", $signals);
+}
+
+
+#-------------------------------------------------------------
+# trickleState  - method
+#
+# Initiates a call down to all children 
+# to execute code pertaining to 'state'
+#-------------------------------------------------------------
+
+sub trickleState
+{
+	my $self = shift;
+	my $state = shift;
+	my $noTrickle = undef;
+	$self->{state} = $state;	
+
+	SW::debug($self,"[TrickleState] going to $state",5);
+
+	if($state eq 'Render')  #  descending the tree built into render()
+	{
+		$self->render();
+		$noTrickle = 'true';
+	}
+	elsif($state eq 'SaveState')
+	{
+		$self->saveState(@_);
+	}
+	elsif($state eq 'CleanUp')
+	{		# special case - do children before parent
+		$self->{child}->trickleState($state);
+		$self->cleanup();
+		$noTrickle = 'true';
+	}
+
+	$self->{child}->trickleState($state) unless $noTrickle;
+
+}
+
+
+#-------------------------------------------------------------
+# syncState - method
+#
+# This is used to catch an app up to the current state 
+# of affairs if it has been added dynamically later in the 
+# flow.
+# aka catchUp
+#-------------------------------------------------------------
+
+sub syncState
+{
+	my $self = shift;
+	my $target = shift;
+	my $currentState = $self->{state};
+
+	my @stateList = qw(InitApplication InitInstance InitTransaction
+			   Render SaveState Cleanup);
+
+	return unless $currentState;
+
+	SW::debug($self,"Catchup on ".ref($target)." current state is $currentState",5);
+
+	foreach my $state (@stateList)
+	{
+		if ($currentState eq $state)
+		{
+			last;
+		}
+		else
+		{
+			$target->trickleState($state);
+		}
+	}
+
+}
+
+
+#-------------------------------------------------------------
+#  render
+#-------------------------------------------------------------
+
+sub render
+{
+   my $self = shift;
+
+	print STDERR "rendering from master\n";
+	my @output =  $self->{child}->render();
+	print(@output);
+
+	# dump out debugging info
+
+	if ($self->{debugLines})
+	{
+		print("<hr><pre>");
+		print( join ("\n", @{$self->{debugLines}}) );
+		print("</pre>");
+	}
+
+	return 1;
+}
+
+#-------------------------------------------------------------
+#  saveState
+#-------------------------------------------------------------
+
+sub saveState
+{
+	my $self = shift;
+
+	# write out the session
+
+	SW::debug($self, "Storing out session data", 5);
+	
+	# save the user if it needs to be saved, not sure it's needed anymore
+	SW->user->save;
+
+
+	# save and then destroy links to documents
+	while (my $d = shift @{$self->{documents}})
+	{
+		if ($d->close())
+		{
+			print STDERR "Document $d saved";
+		}
+	}
+
+	return 1;
+}
+
+#------------------------------------------------------------
+# cleanup
+#------------------------------------------------------------
+
+sub cleanup
+{
+	my $self = shift;
+
+	# dump out debug messages to the error log
+
+	if ($self->{debugTypes})
+	{
+		$self->{debugLevel} ? SW::dumpDebug($self->{debugTypes}, $self->{debugLevel})
+								  :	SW::dumpDebug($self->{debugTypes}, 3);
+	}
+	elsif ($self->{debugLevel})
+   {  
+		      SW::dumpDebug(['ALL',], $self->{debugLevel});
+   }
+	elsif ($ENV{DEBUG})
+	{
+		print STDERR "debugging by env variable settings at level  $ENV{LEVEL}\n";
+		my @args = split (",", $ENV{DEBUG});
+		SW::dumpDebug(\@args, $ENV{LEVEL});
+	}
+
+
+	# remove the circular references
+
+	#$self->{sessionHandler}->{_session} = undef;
+
+	foreach my $k (keys %$self)
+	{
+		delete($self->{$k});
+	}
+
+	@SW::Log = ();
+	@SW::Debug=();
+}
+
+#------------------------------------------------------------
+# DESTROY
+# It would be ideal to use the DESTROY method to clean up
+# and return all the HTML to the browser.  However,
+# it turns out that it's not that possible.  Why?  Because
+# the $self->{panel} reference prevents the DESTROY method
+# of the app being called because $self->{panel} has a 
+# reference back to the app... circular reference so 
+# mod_perl doesn't bother to free either object.  So
+# DESTROY can't be called unless $self->{panel} is undefined,
+# in which case the DESTROY method will be called but can't
+# render anything because $self->{panel} is undef...
+#------------------------------------------------------------
+
+sub DESTROY
+{
+	my $self = shift;
+
+	print STDERR "Master DESTROYED\n";
+	
+   SW::dumpDebug(['ALL',], 5);
+}
+
+#------------------------------------------------------------
+# exit
+#------------------------------------------------------------
+
+sub exit
+{
+	my $self = shift;
+
+	return 0;
+}
+
+#------------------------------------------------------------
+# serialize
+#------------------------------------------------------------
+
+sub SWSerialize
+{
+#	my $self = shift;
+#	my $serialized_display;
+
+	print STDERR "Hahahaha, this function is older than my grandpa...deprecated!\n";
+
+#	$self->{session}->{cookie_test} = "Cookie Test";
+#	$serialized_display = SW::Util::serializeDisplay($self->{child});
+#	$self->debug("Serialized Display: ".SW::Util::flatten($serialized_display)."\n");
+#	$self->{session}->{serialized_display} = SW::Util::flatten($serialized_display);
+#	$self->debug("cookie args: ".SW::Util::flatten($self->{session}));
+#	return 1;
+}
+
+#------------------------------------------------------------
+# abort
+# Aborts a request any time before "exit" is called
+#------------------------------------------------------------
+
+sub abort
+{
+	my ($self, $abortString) = @_;
+
+	print "$abortString<br>";
+	print __PACKAGE__ . "<br>";
+	print "Package: ".$self->{package}."<br>";
+	print "<pre>".$self." / ".ref($self)."</pre>";
+
+	if ($self->{parent})
+	{
+		print "Aborting from child";
+	}
+	else
+	{
+		print "Aborting from main app";
+	}
+
+	$self->cleanup;
+	SW->request->rflush();
+	Apache->exit();
+}
+
+#------------------------------------------------------------
+# getObject :
+# returns a reference to the named component
+#------------------------------------------------------------
+
+sub getObject
+{
+	my ($self, $objectName) = @_;
+	return $self->{object}{$objectName};
+}
+
+#------------------------------------------------------------
+# setObject - method
+#
+# Used to be addObject
+#
+# Sets the value of an object to a specified value.  The
+# name of the object is passed as the first argument, and the
+# value is passed as the second argument.
+#
+# Returns nothing (well, returns undef, but who wants that!)
+#------------------------------------------------------------
+
+sub setObject
+{
+	my ($self,$objname,$value) = @_;
+
+	$self->{objects}{$objname} = $value;
+	return;
+}
+
+#------------------------------------------------------------
+# deleteObject - method
+#
+# Deletes the value associated with the object name passed
+# as an argument.
+#------------------------------------------------------------
+
+sub deleteObject
+{
+	my ($self,$objname) = @_;
+
+	$self->{objects}{$objname} = undef;
+}
+
+#------------------------------------------------------------
+# setDataValue
+#
+# formerly addDataValue, but set makes more sense, because
+# the function is also used when the value already exists
+#------------------------------------------------------------
+
+sub setDataValue
+{
+	my ($self, $dataKey, $dataValue)= @_;
+	print STDERR "setDataValue on $dataKey and with DATA is : ", Dumper %{SW->data};
+	SW->data->{$dataKey} = $dataValue;
+}
+
+#------------------------------------------------------------
+# getDataValue
+#------------------------------------------------------------
+
+sub getDataValue
+{
+	my ($self,$key) = @_;
+	return SW->data->{$key};
+}
+
+#------------------------------------------------------------
+# deleteDataValue
+#------------------------------------------------------------
+
+sub deleteDataValue
+{
+	my ($self,$key) = @_;
+	delete SW->data->{$key};
+}
+
+#------------------------------------------------------------
+# getData
+#------------------------------------------------------------
+
+sub getData
+{
+	return SW->data;
+}
+
+#------------------------------------------------------------
+# getUser
+#------------------------------------------------------------
+
+sub getUser
+{
+	print STDERR "getUser: woohoo, this function is so old it stinks!!  Use SW->user\n";
+	return SW->user;
+}
+
+#------------------------------------------------------------
+# getRequest
+#------------------------------------------------------------
+
+sub getRequest
+{
+	print STDERR "getRequest: very old function, use SW->request instead!\n";
+   return SW->request;
+}
+
+#------------------------------------------------------------
+# login_redirect
+# 
+#------------------------------------------------------------
+      
+sub login_redirect
+{
+   my $self = shift;
+	print STDERR "LOGIN_REDIRECT CALLED\n";
+   my $r = SW->request;
+	my $args = $r->args();
+   my $uri = $r->uri();
+	my $url = "$uri"."&$args" if $args;
+
+	$r->header_out(Location => "$SW::Config::LOGIN_LOCATION?uri=$url");
+   #$r->send_cgi_header(<<"EOF");
+#Location: $SW::Config::LOGIN_LOCATION?uri=$url
+#EOF
+   #this triggers a very strange error, but should work
+   #$self->removeChild();
+   #$r->internal_redirect("$SW::Config::LOGIN_LOCATION?uri=$url");
+	warn "Login redirect finished and returning";
+}  
+
+#------------------------------------------------------------
+# error
+# gracefully handles errors in the transaction
+#------------------------------------------------------------
+
+sub error
+{
+	my $self = shift;
+	my $url = shift;
+
+
+	my $r = SW->request;
+	my $uri = $r->uri();
+
+	if ($url)
+	{
+		$r->content_type('text/html');
+print <<"EOR";
+<script language=javascript>
+top.location="$url";
+</script>
+EOR
+	}
+	else
+	{
+	$r->send_cgi_header(<<EOF);
+Location: $SW::Config::LOGIN_LOCATION?uri=$uri
+EOF
+	}
+
+	$self->cleanup();
+	#this is obsolete $r->exit;
+}
+
+#------------------------------------------------------------
+# getSession
+#------------------------------------------------------------
+
+sub getSession
+{
+	return SW->session;
+}
+
+#------------------------------------------------------------
+# setSessionValue
+#------------------------------------------------------------
+
+sub setSessionValue
+{
+	my ($self, $key, $value)= @_;
+	my $caller = caller;
+	return SW->session->setPrivateValueOnBehalfOf($caller,$key,$value);
+}
+
+#------------------------------------------------------------
+# getSessionValue
+#------------------------------------------------------------
+
+sub getSessionValue
+{
+	my ($self, $key)= @_;
+	my $caller = caller;
+	return SW->session->getPrivateValueOnBehalfOf($caller, $key);
+}
+
+#------------------------------------------------------------
+# deleteSessionValue
+#------------------------------------------------------------
+
+sub deleteSessionValue
+{
+	my ($self, $key)= @_;
+	my $caller = caller;
+	return SW->session->delPrivateValueOnBehalfOf($caller, $key);
+}
+
+#------------------------------------------------------------
+# addAppendage
+#------------------------------------------------------------
+
+sub addAppendage
+{
+	my ($self, $key, $value)= @_;
+	$self->{appendages}{$key} = $value;
+}
+
+#------------------------------------------------------------
+# deleteAppendage
+#------------------------------------------------------------
+
+sub deleteAppendage
+{
+	my ($self, $key)= @_;
+	delete $self->{appendages}{$key};
+}
+
+#------------------------------------------------------------
+# getAppendages
+#------------------------------------------------------------
+
+sub getAppendages
+{
+	return $_[0]->{appendages};
+}
+
+
+#------------------------------------------------------------
+#  getURLAppendages
+#------------------------------------------------------------
+
+sub getURLAppendages
+{
+	my $self = shift;
+	
+	#fait une belle chaine d'appendages clef=valeur&clef1=valeur
+	
+	return join '&', 
+								( 
+								map 	{"$_=" . $self->{appendages}{$_}}
+										(keys %{$self->{appendages}}) 
+								);
+
+}
+
+
+#------------------------------------------------------------
+# getDbh - this is deprecated ... kept here temporarily
+# Returns the dbh that corresponds to a unique object
+# locator
+#------------------------------------------------------------
+
+*getDbh = \&SW::DB::getDbh;
+
+#------------------------------------------------------------
+# addDocument
+#------------------------------------------------------------
+
+sub addDocument
+{
+	my $self = shift;
+	my $documentRef = shift;
+
+	my $found = 0;
+
+	foreach my $d (@{$self->{documents}})
+	{
+		if ($d eq $documentRef)
+		{
+			$found = 1;
+			last;
+		}
+	}
+
+	return 0 unless !$found;
+
+	push (@{$self->{documents}}, $documentRef);
+	SW::debug($self,"Adding document ".$documentRef->{uid},3);
+	return 1;
+}
+
+#------------------------------------------------------------
+# getDocuments
+#------------------------------------------------------------
+
+sub getDocuments
+{
+	return $_[0]->{documents};
+}
+
+1;
+
+__END__
+# Below is the stub of documentation for your module. You better edit it!
+
+=head1 NAME
+
+SW::Master - Parent to all SmartWorker Applications
+
+=head1 SYNOPSIS
+
+  	use SW::Master;
+
+  	my $master = new SW::Master;
+
+	my $master = new SW::Master;
+
+	my $app = SmartWorker_A1->new("SmartWorker", $master);
+
+	$master->setChild($app);
+
+	$master->go();
+	
+	$master = undef;
+
+
+=head1 DESCRIPTION
+
+The application framework class provides a way of abstracting the transaction-based
+protocol of the WWW from the developer of server-side applications.  These applications
+are designed to run on the SmartWorker server only, so they can take advantage of the
+simple API offered to the programmer.  This API is useful for rendering platform-independent
+HTML, handling transparent and persistent connections to databases, and
+writing multi-user client-server apps.
+
+The Master is split off from the original Application class to try to separate out 
+code that needs to be run once per user session (user lookup to the database, session 
+tracking and storage, database handles, documents, display serialization (future)). 
+
+The Master class handles session persistence transparently by retaining session ID
+values as part of posted URLs or cookies (if the browser can support these
+features). Moreover, the master class is the message translation system for
+every SmartWorker application.  It is respsonsible for executing user-written callback
+methods to handle client-side interaction such as URL requests or POST operations.
+
+=head1 SESSION TRACKING
+
+Session tracking is built-in to the application object.  When an application is woken
+up, it checks the submitted request for a sessionId.  If present, the application
+retrieves the session data from storage (provided it hasn't yet expired).  Otherwise, it
+creates a new session object.
+
+These objects can be written to just like a hash (see example above) and they will 
+be stored and retrieved transparently between calls.
+
+Session-specific data should be minimised as much as possible, and the goal of
+SmartWorker is to remove the concept of "Session Tracking" as much as possible.
+Nevertheless, the idea of a session object is appealing to many programmers, and will
+solve a number of problems inherent in the stateless HTTP protocol.
+
+=head1 STATE INFORMATION
+
+The app also uses a hash called "appendages" to generate state information that is passed
+through query strings or POST operations.  This hash can be added to at will and the
+contents of it will be passed from one call to another.  Because session tracking
+has been implemented, this is only necessary for passing authentication information back
+and forth between browser and server, but can be used for anything else (like session ID if
+session tracking is using files).
+
+=head1 EXECUTON STAGES
+
+These are the stages of execution.  Master calls its own trickleState method in turn
+with each of these.  Master and apps record their current states for reference as
+$self->{currentState};
+
+        $self->trickleState('InitApplication');
+
+        $self->trickleState('InitInstance');
+
+        $self->trickleState('InitTransaction');
+
+        $self->trickleState('PreTreeCallbacks');
+
+        $self->trickleState('BuildUI');
+
+        $self->trickleState('PostTreeCallbacks');
+
+        $self->trickleState('SaveState');
+
+        $self->trickleState('Render');
+
+        $self->trickleState('CleanUp');
+
+=head1 METHODS
+
+  new - arguments: none
+        Creates and returns an instance of the master class.  It sets up
+        the $app->{data} structure, which contains information submitted to the
+        application either through a URL or through a POST request. 
+
+  setChild - arguments: SW::Application
+	     Sets the one and only one immediate child application of master
+
+  go  - The go() method takes no arguments.  It is mandatory to call this method.
+
+  trickleSate - arguments: StateName
+			Should only be called internally from master or Application
+			base class.  Trickles state down to nested children to keep
+			everything in sync.  See Execution Stages above
+	
+  syncState - arguments: target_application_object	
+			Used when adding applications dynamically where the master and
+			original children applications are in an advanced state	such
+			as SWBuldUI.
+			Catches this object up with respect to the object syncState
+			is called on.  Be careful on what object syncState is called,
+			it should normally be called on it's parent.  Note that calling
+			it on master or an app higher up the chain may result in unpredictable
+			results because the immediate parent may itself be in the midst 
+			of a syncState call.
+
+  doCallBack - takes a name and runs the corresponding method as registered with
+		registerCallback.
+
+  getSession - returns a reference to the session object, which is either new
+        or has been loaded by the app when it's woken up.
+
+  exit - This needs to be called prior to terminating the application, because it takes
+        care of a fundamental circular reference that must be removed or the DESTROY
+        function will never be called.
+
+  sessionMethod - returns which method of session tracking the app is using.  This should
+        only be used by other SW classes to decide how to rewrite links & forms.
+  
+  sessionId - returns the session id if the app if using file sessions tracking
+               or undef if cookie session 
+
+  addComponent - adds a component to the application's component array. Then, to
+                 read values from that component in the future, you only need to
+					  use getComponent to retrieve it and then getValue on the component. 
+
+  getComponent - retrieves a reference to a named component
+
+  deleteComponent - removes a component from the system list
+
+  getPrefs($prefkey) - gets the value of preference '$prefkey' for this object
+
+  setPrefs($prefkey,$prefvalue) - sets the value of preference '$prefkey' for this object to '$prefvalue'
+
+=head1 AUTHOR
+
+Scott Wilson, scott@hbe.ca
+
+=head1 SEE ALSO
+
+perl(1).
+
+=head1 REVISION HISTORY
+
+  $Log: Master.pm,v $
+  Revision 1.70  1999/11/15 18:17:33  gozer
+  Added Liscence on pm files
+
+  Revision 1.69  1999/11/11 07:13:24  gozer
+  Cookie sends the cookie only if necessary
+  Handler returns a 404 when handling the get of a file that isn't on the file server
+  User - added the change of username call SW->user->authen->setName("NewName");
+
+  Revision 1.68  1999/11/05 21:58:37  scott
+  debugging
+
+  Revision 1.67  1999/10/14 16:32:41  gozer
+  Fixed 1-2 little typos
+
+  Revision 1.66  1999/10/14 04:55:14  scott
+  debugging
+
+  Revision 1.65  1999/10/12 17:19:03  gozer
+  Moved error-handling from Master to Handler
+  Added a ServerError handler for debugging purposes
+
+  Revision 1.64  1999/10/04 21:04:29  gozer
+  lots of small diffs...
+  Fixed Handler to be more Apache::Filter nice ... (still the non-existent file problem)
+  Now you can access SW::Config stuff anytime (even at start-up use)
+  MOdularized some more the SW::User class
+  Small minor code fixes all over the place
+
+  Revision 1.63  1999/09/30 11:30:27  gozer
+  Cposmetic fixes
+
+  Revision 1.62  1999/09/21 00:23:33  gozer
+  MOdified some more stuff to SW->user and SW->session
+
+  Revision 1.61  1999/09/20 20:43:13  krapht
+  It works!!  It works!!  We fixed the problem we had with session.
+  _insertSignal had problems, it was setting appState as a global, but it
+  really is a private value for each app.
+
+  Revision 1.60  1999/09/20 19:58:14  fhurtubi
+  Removed a debugging line
+
+  Revision 1.59  1999/09/20 19:51:18  gozer
+  Temp fix for the lost DataValues
+
+  Revision 1.58  1999/09/20 14:30:00  krapht
+  Changes in most of the files to use the new way of referring to session,
+  user, etc. (SW->user, SW->session).
+
+  Revision 1.57  1999/09/19 20:50:48  gozer
+  Some more docs + beautifying
+
+  Revision 1.55  1999/09/19 19:29:43  krapht
+  Removed stuff relative to PreTreeCallbacks, etc.
+  Fixed a line where someone had changed SaveState for ^FState
+  Added comments, etc.  general cleanup
+
+  Revision 1.54  1999/09/19 18:36:07  gozer
+  Remmoved unused warnings messages:
+
+  Revision 1.53  1999/09/17 21:18:16  gozer
+  This is a major modification on the whole SW structure
+  New methods in SW:
+  SW->master	: returns the current Master o bject
+  SW->session	: returns the current session object
+  SW->user	: returns the current user
+  SW->data	: returns the current URL/URI parsed data (getDataValue, setDataValue) but it's incomplete for now
+
+  Now, no object needs to get a hold on any of those structures, they can access them thru the global methods instead.  Thus fixing a lot of problems with circular dependencies.
+
+  Completed the User class with User::Authen for authentication User::Authz for authorization and User::Group for group membership.
+
+  I modified quite many files to use the new SW-> methods instead of holding on them.  Still some cleaning up to do
+
+  Tonight, I debug this change and tommorrow I'll document everything in details.
+
+  SW::Session now has 2 accesses  set/get/delGlobalValues and set/get/delPrivateValues for private(per application class) and global.
+
+
+  Revision 1.48  1999/09/13 15:00:57  scott
+  lots of changes, sorry this is bad documentation :-(
+
+  Revision 1.47  1999/09/12 18:59:40  gozer
+  EMERGENCY UPDATE BEFORE MY MACHINES CRASHES FOR REAL
+
+  Moved user Authorization outside everything and inside it's own package SW::AppAccess
+  The SWValidateUser should be removed from the code now.
+  Removed login info from smartworker.conf, not needed anymore
+  added $SW::CONFIG::LOGIN_HANDLER = "SW::Login"
+  added to the new SW::App::Admin::Applications so you can edit the access privlieges for your app in there
+
+  Revision 1.46  1999/09/11 22:18:52  jzmrotchek
+  Added in perldoc for the new functions.
+
+  Revision 1.45  1999/09/11 20:48:32  jzmrotchek
+  Added the setPref() and getPref() methods, for respectively setting/getting global preference values.  Note that these are SW globals, not user or app globals.  It is likely that they won't get used particularly often.
+
+  Revision 1.44  1999/09/11 08:44:36  gozer
+  Made a whole bunch of little kwirps.
+  Fixed Handler to deal correctly with SW_App_Namespace without defaulting to SW::App when the var is set
+  Fixed the bug that made Login.pm create an empty hidden argument on every login attempt
+  Added a whole bunch of modules preloading in SW-perl-startup, good speed improvment
+  Fixed a few warning here and there.  Only one missing the SWeep.  Application.pm and AUTOLOAD warning ?!?
+  Changed the SW::Util::flatten and circular_flatten to succesfully use Data::Dumper ;-} (-180 lines of code)
+  Gone to bed very late
+
+  Revision 1.43  1999/09/09 16:21:11  krapht
+  Scott put a small hack in _insertSignal to prevent ImageButtons from
+  putting that stupid .x=value part at the end!
+
+  Revision 1.42  1999/09/08 21:25:22  jzmrotchek
+  Added code to allow redirects to error handlers in the case of error messages aroun line 125.  (Search for "Inserted by Zed, Sept 8/99" if the code gets altered and the line numbers move around)  This will require the appropriate smartworker.conf <location> stanza handlers to be set up.  Watch for more docs on this RSN, and comment out if it breaks your code currently.
+
+  Revision 1.41  1999/09/08 17:03:37  jzmrotchek
+  Added custom_response() handler directives for SERVER_ERROR and NOT_FOUND errors.
+  The handlers themselves will be done shortly, and should be up RSN.
+
+  Revision 1.40  1999/09/08 15:37:34  fhurtubi
+  Okay, just added 2 lines that changed my life!!! When you're writing an app with
+  the dispatch function built in, you have to put a lot of callback methods that do
+  nothing but to set appState to the name of the callback. You don't have to do this
+  now because in _insertSignal, if the callback isn't found in the application, i
+  set appState to whatever the callback was. But, if you're callback has to do more
+  than just setting up appState, put the callback in your code and it's going to
+  get executed.
+
+  Revision 1.39  1999/09/07 23:33:56  fhurtubi
+  Changed login.pl call to LOGIN_LOCATION
+
+  Revision 1.38  1999/09/05 18:02:27  gozer
+  Moved the login processing in it's own perl module, as it should be
+
+  Revision 1.37  1999/09/04 20:56:30  fhurtubi
+  Tried to add the logout part, it seems to not function. Well, it is but
+  partly, and it's not doing quite what I want it to do!
+
+  Revision 1.36  1999/09/03 01:05:36  scott
+  Mods so we can remove the site specific configurations info
+  (SW::Config) from the framework.
+
+  Revision 1.35  1999/09/01 20:00:11  scott
+  fixed a bug in Data causing extra objectaccess records
+
+  Revision 1.34  1999/09/01 01:28:02  krapht
+  Removed the #(*@!$&)(*&% autoloader shit
+
+  Revision 1.33  1999/08/30 20:04:00  krapht
+  Removed the Exporter stuff
+
+  Revision 1.32  1999/08/29 15:39:21  scott
+  Updated to use SW::DB
+
+  Revision 1.31  1999/08/28 03:17:07  scott
+  Removed a whole pile of methods from SW::Application that were just going
+  $self->{master}->whateverYouJustCalledOnMe(@_).  They now use the autoload
+  mechanism.  This makes the code in Application more readble (not to mention
+  shorter) and less error prone if these methods are changed in Master.
+
+  Revision 1.30  1999/08/27 22:39:24  krapht
+  Removed the SW::Data::ContactList line in the use statements.
+  What was it for??!
+
+  Revision 1.29  1999/08/27 20:04:50  krapht
+  Changed addDataValue to setDataValue
+
+  Revision 1.28  1999/08/27 19:57:37  krapht
+  Changed addSessionValue to setSessionValue (makes more sense)
+
+  Revision 1.27  1999/08/20 01:58:21  scott
+  minor bug tweaking ...
+
+  Revision 1.26  1999/08/16 18:19:21  scott
+  Changes to user to accomodate the groups and permissions some more
+
+  Revision 1.25  1999/08/14 00:20:35  scott
+  messing around with debugging
+
+  Revision 1.24  1999/08/12 14:45:11  fhurtubi
+  Little bug correction
+
+  Revision 1.23  1999/07/25 02:42:27  scott
+  Mostly changes to squash circular reference bugs that were causing
+  sessions and applications to linger arouond until server restart
+  (thus really messing up the session storage)
+
+  Revision 1.22  1999/07/19 13:29:19  scott
+  Lots of clean-up work, debugged and improved the desctructor calling of all
+  copmonents so none should be left lingering after the transaction completes.
+
+  This in turn solved the session problem (destructor wasn't being called
+  because it was persisting past the end of the transaction)
+
+  Revision 1.21  1999/07/08 15:45:27  scott
+  oops - should have done these separately ...
+
+  Working on changes to the database code for users, groups, and objects
+
+  as well as debugging and signals
+
+  Revision 1.20  1999/06/18 15:27:18  scott
+  Work on User is for some changes to the database layout ....
+
+  Master and Registry are for the new debugging
+
+  Revision 1.19  1999/06/17 21:46:26  krapht
+  Code cleanup
+
+  Revision 1.18  1999/06/11 19:27:01  scott
+  Removed some deprecated functions:
+
+      registerCallback
+  	 preCallbacks
+      postCallbacks
+
+  Revision 1.17  1999/06/10 18:47:10  scott
+  added processConfigurationArguments to break this functionality out of the new
+  method.  It goes through submitted arguments and looks for keys such as (
+  and for now only) debug and renderStyle.  Adds these to the appendages and
+  performs any other necessary action as a result.
+
+  Revision 1.16  1999/06/02 17:11:20  scott
+  fixes to argument passing in signals
+
+  Revision 1.15  1999/06/01 21:07:55  scott
+  expanded transaction model a bit to begin to encompass signals and exposure,
+  specifically for the treeview.
+
+  Revision 1.14  1999/06/01 18:46:09  scott
+  work on transaction model and signals / arguments
+
+  Revision 1.13  1999/05/20 17:39:17  scott
+  changed persist so it only persists once
+
+  Revision 1.12  1999/05/20 17:35:48  scott
+  Edited the transaction model, now at the end of a callback, if
+  you return the string "persist", that signal gets stored away
+  to the session and executed each time the app runs.
+  If you return "clear" it will be removed. (maybe it should only
+  persist once? thoughts?)
+
+  Revision 1.11  1999/05/20 13:52:00  scott
+  Changes for the new transaction model
+
+  Revision 1.10  1999/05/07 01:27:20  scott
+  debugging
+
+  Revision 1.9  1999/05/04 15:57:39  scott
+  updated docs for debugging
+
+  Revision 1.8  1999/05/04 15:53:44  scott
+  -New Apache::Session based database session tracking
+  -New debugging scheme
+
+  Revision 1.7  1999/04/22 17:24:12  kiwi
+  changed addDataValue to not overwrite existing ones
+
+  Revision 1.6  1999/04/22 13:35:28  kiwi
+  Added the getMaster hack
+
+  Revision 1.5  1999/04/21 08:56:18  kiwi
+  Some language stuff, character encoding
+
+  Revision 1.4  1999/04/21 05:56:09  scott
+  added getURLAppendages
+
+  Revision 1.3  1999/04/20 05:02:43  kiwi
+  Changed the authentication scheme to allow for "guest".
+
+  Revision 1.2  1999/04/14 20:27:16  kiwi
+  Added debug to appendages
+
+  Revision 1.1  1999/04/13 16:36:54  scott
+  New class,  master takes all the code out of Application that is essentially
+  run once - freeing up some clutter in the application class.
+
+
+
+  -----  from Application ----------
+
+  Revision 1.27  1999/03/19 22:41:30  kiwi
+  Added code to save the user object when the transaction completes.
+
+  Revision 1.26  1999/03/17 23:16:55  kiwi
+  Changed $app->getDbh() to actually work with different databases.
+
+  Revision 1.25  1999/03/16 00:22:53  kiwi
+  Now includes "SW::Config"
+
+  Revision 1.24  1999/03/10 23:20:10  kiwi
+  Changed User Authentication slightly
+
+  Revision 1.23  1999/03/09 22:43:31  kiwi
+  *** empty log message ***
+
+  Revision 1.22  1999/02/22 15:43:22  kiwi
+  Temporarily added callback to "SWValidateUser" in the executing application
+  but will re-work this to work with scott's new callback system
+
+  Revision 1.21  1999/02/22 00:52:58  scott
+  1)  added a $object->visible() method to enable hiding objects
+  2)  created TreeView
+  3)  implemented an easier, more flexible callback system to facilitate
+  	callbacks calling other callbacks and better control over which
+  	level of objects get the callbacks.  Also allows argument passing
+  	to the callback.
+
+  Revision 1.20  1999/02/18 23:59:15  kiwi
+  Added some documentation
+
+  Revision 1.19  1999/02/18 21:00:53  kiwi
+  Fixed up the MySQL line for localhost.  Hmmmmm.
+
+  Revision 1.18  1999/02/18 10:42:50  scott
+  New GUIElement components - LinkExternal, ListBox, SelectBox, TextBox, RadioButtonSet
+
+  Revision 1.17  1999/02/17 22:49:43  kiwi
+  Changed component list so that each sub-app owns its own
+
+  Revision 1.16  1999/02/17 17:07:45  kiwi
+  Huge update to Application.pm.
+  Application data is now accessed through accessor methods that check for a parent
+   (or host) application. If it exists, they pass the call up the hierarchy to the
+   parent, which does the same.  This means that all session/appendage/argument data
+   remains on the main application object.
+  Have also implemented a few stub functions for rendering.
+
+  Revision 1.15  1999/02/15 19:07:35  kiwi
+  Added "component" hash on the application object, and "getComponent", "addComponent", and
+  "deleteComponent" methods to handle it.
+
+  Revision 1.14  1999/02/12 22:41:19  scott
+  removed getArgs()
+  added a call to $panel->updateState() in the go method to force all objects
+    to adjust their state with the session object
+  added ref(caller()) to the beggining of each debug string
+
+  Revision 1.13  1999/02/12 22:31:31  kiwi
+  Moved the flatten method to the SW::Util package
+
+  Revision 1.12  1999/02/12 18:58:23  kiwi
+  Added some debugging info to dump out the appendages hash.
+
+  Revision 1.11  1999/02/12 17:15:03  kiwi
+  FIxed stupid appendages typo.
+
+  Revision 1.10  1999/02/12 17:07:38  kiwi
+  
+  Added "appendages" hash.
+  Fixed POST problem by parsing command args with CGI::param instead of $r->content.
+  Revision 1.9  1999/02/12 00:07:33  kiwi
+  Added user checking, $app->cleanup() method, $app->error() method
+
+  Revision 1.8  1999/02/11 22:44:43  kiwi
+  *** empty log message ***
+
+  Revision 1.7  1999/02/11 22:38:02  scott
+  Modified CallBacks to support either a subclassed application or stand-alone app
+
+  Added sessionId()  to return the session id if in file style session tracking
+  and undef if in Cookie style sessions.
+
+  Revision 1.6  1999/02/11 20:58:51  kiwi
+  Added initial callback to "SWInitApplication".
+  Changed callbacks to be prefixed with "SWResponse" instead of just "response".
+
+  Revision 1.5  1999/02/11 18:04:24  kiwi
+  Added the "addCookie" method to allow for developers to create
+  cookies that are transparently passed back and forth between the browser and
+  the app.
+
+  Revision 1.4  1999/02/10 23:29:08  kiwi
+  *** empty log message ***
+
+  Revision 1.3  1999/02/10 23:17:26  kiwi
+  Fixed up some documentation about session tracking.
+
+  Revision 1.2  1999/02/10 23:10:08  kiwi
+  Added "getSession" to retrieve a reference to the session hash.
+
+  Revision 1.1.1.1  1999/02/10 19:49:10  kiwi
+  SmartWorker
+
+  Revision 1.4  1999/02/10 17:22:24  kiwi
+  *** empty log message ***
+
+  Revision 1.3  1999/02/09 22:53:12  kiwi
+  Changed the way the application is destroyed, and corrected some docs.
+
+  Revision 1.2  1999/02/09 18:07:07  kiwi
+  Added Revision History to heading in perldoc section
+
+
+=cut

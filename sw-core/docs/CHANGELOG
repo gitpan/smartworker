@@ -1,0 +1,57 @@
+=head1  SmartWorker Revision History
+
+
+# $Id: CHANGELOG,v 1.5 1999/09/03 02:01:36 scott Exp $
+
+=head2 Changes since 0.81
+
+=over 2
+
+=item - Created a Makefile.PL to create well-formed CPAN compliant 
+distributions (Philippe)
+
+=item - Moved the SW::Config files which contained site specific 
+info out of the framework and into the /conf folder (make sure 
+you update your sw-perl-startup.pl to reflect this)  (Scott)
+
+=item - GroupManager implemented, let's the user create/delete/edit 
+groups as well as invite others into the groups.   
+ C<SW::App::GroupManager> (Fred)
+
+=item - Re-organized the cvs and name spaces a bit.  Moved the 
+apps into the C<SW::App::whatever> namespace to avoid conflicts.   
+Details to go up on the CVS page (Scott & Philippe)
+
+=item - Created SW::Handler to replace the hacked up Apache::Registry 
+we were using.  Details on how this works will be added to the 
+reference docs on the web site.  Requires changes to 
+C<smartworker.conf>  (Philippe Chiasson)
+
+=item - fixed SW::Util::Prep so it ingores leading spaces in the 
+#SW directives  (Scott)
+
+=item - Removed extraneous use of Exporter and AutoLoader  (JF)
+
+=item - Fixed problems with double quotes in the database  (Fred)
+
+=item - Implemented 
+
+C<SW::Data - getStorage('key')	 >
+
+C<         - setStorage('key','value') >
+
+C<         - deleteStorage('key') >
+
+(Scott)
+
+
+=item - defined consistent naming conventions for GUIElement 
+properties (see naming_conventions in the /docs dir and the soon 
+to be started reference manual )  (JF Brousseau)
+NOTE:  This may break your apps :-(  in particular -target 
+attributes on all but the LinkExternal Object now become -signal
+
+=item - major overhaul of the app writing how-to   (Fred H)
+
+
+=back

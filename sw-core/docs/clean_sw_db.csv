@@ -1,0 +1,267 @@
+# MySQL dump 6.0
+#
+# Host: localhost    Database: smartworker
+#--------------------------------------------------------
+# Server version	3.22.23b
+
+#
+# Table structure for table 'appaccess'
+#
+CREATE TABLE appaccess (
+  userid int(11) DEFAULT '0' NOT NULL,
+  appid int(4) DEFAULT '0' NOT NULL,
+  perm tinyint(4) DEFAULT '0' NOT NULL
+);
+
+#
+# Dumping data for table 'appaccess'
+#
+
+
+#
+# Table structure for table 'apps'
+#
+CREATE TABLE apps (
+  aid int(11) DEFAULT '0' NOT NULL auto_increment,
+  appid varchar(16) DEFAULT '' NOT NULL,
+  name varchar(128) DEFAULT '' NOT NULL,
+  certified enum('true','false') DEFAULT 'true',
+  lastmodified timestamp(14),
+  comment blob,
+  datatypes varchar(128),
+  PRIMARY KEY (aid),
+  KEY appNameKey (name(15))
+);
+
+#
+# Dumping data for table 'apps'
+#
+
+
+#
+# Table structure for table 'authentication'
+#
+CREATE TABLE authentication (
+  uid int(10) DEFAULT '0' NOT NULL auto_increment,
+  username varchar(32) DEFAULT '' NOT NULL,
+  password varchar(32) DEFAULT '' NOT NULL,
+  PRIMARY KEY (uid),
+  KEY username (username),
+  UNIQUE uid (uid,username)
+);
+
+#
+# Dumping data for table 'authentication'
+#
+
+INSERT INTO authentication VALUES (1000001,'scott','scott');
+INSERT INTO authentication VALUES (1000002,'jf','jf');
+INSERT INTO authentication VALUES (1000003,'john','john');
+INSERT INTO authentication VALUES (1000004,'fred','fred');
+INSERT INTO authentication VALUES (1000005,'ray','ray');
+INSERT INTO authentication VALUES (1000006,'demo','demo');
+
+#
+# Table structure for table 'contacts'
+#
+CREATE TABLE contacts (
+  cid int(11) DEFAULT '0' NOT NULL auto_increment,
+  name varchar(64) DEFAULT '' NOT NULL,
+  creator int(11),
+  bday date DEFAULT '0000-00-00' NOT NULL,
+  tel mediumblob,
+  email varchar(128),
+  vcard longblob,
+  firstName varchar(64),
+  lastName varchar(64),
+  appid varchar(16),
+  type varchar(10) DEFAULT '' NOT NULL,
+  PRIMARY KEY (cid),
+  KEY name (name,bday),
+  UNIQUE cid (cid)
+);
+
+#
+# Dumping data for table 'contacts'
+#
+
+
+#
+# Table structure for table 'events'
+#
+CREATE TABLE events (
+  eid int(11) DEFAULT '0' NOT NULL auto_increment,
+  name varchar(64) DEFAULT '' NOT NULL,
+  creator int(11),
+  summary varchar(64),
+  dtstart varchar(20),
+  dtend varchar(20),
+  vcalendar longblob,
+  category varchar(64),
+  appid varchar(16),
+  type varchar(10) DEFAULT '' NOT NULL,
+  PRIMARY KEY (eid)
+);
+
+#
+# Dumping data for table 'events'
+#
+
+#
+# Table structure for table 'fileaccess'
+#
+CREATE TABLE fileaccess (
+  objectid int(11) DEFAULT '0' NOT NULL,
+  userid int(11) DEFAULT '0' NOT NULL,
+  groupid int(11) DEFAULT '0' NOT NULL,
+  perm tinyint(4) DEFAULT '0' NOT NULL,
+  owner int(11) DEFAULT '0' NOT NULL,
+  KEY obj (objectid),
+  KEY user (userid)
+);
+      
+#
+# Table structure for table 'files'
+#
+CREATE TABLE files (
+  fileid int(11) DEFAULT '0' NOT NULL auto_increment,
+  creator int(11) DEFAULT '-1' NOT NULL,
+  type varchar(15) DEFAULT '' NOT NULL,
+  lastmodified timestamp(14),
+  appid varchar(12) DEFAULT '' NOT NULL,
+  userfilename varchar(128) DEFAULT '' NOT NULL,
+  mimetype varchar(64) DEFAULT 'text/plain' NOT NULL,
+  PRIMARY KEY (fileid),
+  KEY mimetype (mimetype),
+  KEY name (userfilename),
+  KEY creator (creator)
+);
+
+
+#
+# Table structure for table 'groupmembership'
+#
+CREATE TABLE groupmembership (
+  groupid int(11) DEFAULT '0' NOT NULL,
+  userid int(11) DEFAULT '0' NOT NULL,
+  perm tinyint(4) DEFAULT '1' NOT NULL,
+  status tinyint(4) DEFAULT '1',
+  joined varchar(14),
+  KEY grp (groupid),
+  KEY user (userid)
+);
+
+#
+# Dumping data for table 'groupmembership'
+#
+
+
+#
+# Table structure for table 'groups'
+#
+CREATE TABLE groups (
+  groupid int(11) DEFAULT '0' NOT NULL auto_increment,
+  groupname varchar(64) DEFAULT '' NOT NULL,
+  ownerid int(11) DEFAULT '0' NOT NULL,
+  profile blob,
+  home varchar(32),
+  quota smallint(6) DEFAULT '0' NOT NULL,
+  ocount smallint(6),
+  lastseen timestamp(14),
+  perm smallint(6),
+  created varchar(14),
+  PRIMARY KEY (groupid),
+  KEY user (groupname)
+);
+
+#
+# Dumping data for table 'groups'
+#
+
+INSERT INTO groups VALUES (5,'redGroup',1000001,'','',0,0,19990817223735,0,NULL);
+INSERT INTO groups VALUES (6,'smartGroup',1000001,'','',0,0,19990903104433,0,NULL);
+INSERT INTO groups VALUES (3,'yellowGroup',1000001,'','',0,0,19990904212531,0,NULL);
+INSERT INTO groups VALUES (4,'orangeGroup',1000001,'','',0,0,19990906152949,0,NULL);
+INSERT INTO groups VALUES (1,'GUEST',0,NULL,NULL,0,NULL,19990906152600,0,NULL);
+INSERT INTO groups VALUES (2,'ALL',0,NULL,NULL,0,NULL,19990906152600,0,NULL);
+INSERT INTO groups VALUES (7,'admin',0,'','',0,0,19990906152636,1,NULL);
+
+#
+# Table structure for table 'objectaccess'
+#
+CREATE TABLE objectaccess (
+  objectid int(11) DEFAULT '0' NOT NULL,
+  userid int(11) DEFAULT '0' NOT NULL,
+  groupid int(11) DEFAULT '0' NOT NULL,
+  perm tinyint(4) DEFAULT '0' NOT NULL,
+  owner int(11) DEFAULT '0' NOT NULL,
+  KEY obj (objectid),
+  KEY user (userid)
+);
+
+#
+# Dumping data for table 'objectaccess'
+#
+
+
+#
+# Table structure for table 'objects'
+#
+CREATE TABLE objects (
+  objectid int(11) DEFAULT '0' NOT NULL auto_increment,
+  creator int(11) DEFAULT '0' NOT NULL,
+  type varchar(15),
+  storage blob,
+  lastmodified timestamp(14),
+  appid varchar(12),
+  name varchar(128) DEFAULT 'Unnamed Object' NOT NULL,
+  PRIMARY KEY (objectid)
+);
+
+#
+# Dumping data for table 'objects'
+#
+
+
+#
+# Table structure for table 'sessions'
+#
+CREATE TABLE sessions (
+  id varchar(16) DEFAULT '' NOT NULL,
+  length int(11) DEFAULT '0' NOT NULL,
+  a_session longblob NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE id (id)
+);
+
+#
+# Dumping data for table 'sessions'
+#
+
+
+#
+# Table structure for table 'users'
+#
+CREATE TABLE users (
+  uid int(11) DEFAULT '0' NOT NULL auto_increment,
+  profile blob,
+  home varchar(32),
+  quota smallint(6) DEFAULT '0' NOT NULL,
+  ocount smallint(6),
+  lastseen timestamp(14),
+  level smallint(6) DEFAULT '0' NOT NULL,
+  email varchar(64),
+  PRIMARY KEY (uid)
+);
+
+#
+# Dumping data for table 'users'
+#
+
+INSERT INTO users VALUES (1000002,'{ \"preferences\" => { \"system\" => { },},}','1',128,0,19990906135253,0,NULL);
+INSERT INTO users VALUES (1000005,'{ \"preferences\" => { \"system\" => { },},}','20',128,2,19990719143538,0,NULL);
+INSERT INTO users VALUES (1000006,'','0',0,0,00000000000000,0,NULL);
+INSERT INTO users VALUES (1000001,'{ \"preferences\" => { \"system\" => { \"Full Name\" => \"\",},},}','',0,0,19990903164111,0,'scott@hbe.ca');
+INSERT INTO users VALUES (1000003,'','',0,0,00000000000000,0,NULL);
+INSERT INTO users VALUES (1000004,'{ \"preferences\" => { \"system\" => { },},}','',0,0,19990903173441,0,'fred@hbe.ca');
+

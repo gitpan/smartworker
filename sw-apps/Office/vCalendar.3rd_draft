@@ -1,0 +1,933 @@
+package Parse::vCalendar;
+
+#-----------------------------------------------------------------------#
+# vCalendar                                                             #
+#  A module to create, parse, and manipulate vCalendar objects in Perl. #
+#-----------------------------------------------------------------------#
+#  CVS ID tag...                                                        #
+# $Id: vCalendar.3rd_draft,v 1.1 1999/09/02 19:53:51 gozer Exp $                                                                #
+#-----------------------------------------------------------------------#
+
+use strict;
+use Data::Dumper;
+use Parse::vCalendar::Event;
+use Parse::vCalendar::ToDo;
+use Parse::vCalendar::Journal;
+
+sub init_vCalendar {
+    my $warnings = 1;
+    my $errors   = 1;
+
+    #my %vCalendar = {};
+    #my $vCalendar = \%vCalendar;
+
+    my @vevents;
+    my $vevents = \@vevents;
+
+
+    my @vtodos;
+    my $vtodos = \@vtodos;
+
+    my @vjournals;
+    my $vjournals = \@vjournals;
+
+
+
+    my $vCalendar = {
+	"prodid"            => '',
+	"version"           => '',
+	"vevents"           => $vevents,
+	"vtodos"            => $vtodos,
+	"vjournals"         => $vjournals
+	};
+}
+
+sub new
+{
+   my $classname = shift;
+
+   my $vCalendar = init_vCalendar;
+   bless $vCalendar, $classname;
+   return $vCalendar;
+}
+
+
+sub new_event {
+    my $vCalendar = shift;
+    my $event = new Parse::vCalendar::Event;
+    print Dumper($vCalendar);
+    push (@{$vCalendar->{'vevents'}},$event);
+    return $vCalendar;
+}
+
+sub new_event_old {
+#----------------------------------------------------------------------------------------------------------
+# vEvent Properties (tags within vEvent blocks)                                                 
+#
+# The following are optional, but MUST NOT occur more than once
+# class 
+# created 
+# description 
+# dtstart 
+# geo 
+# last-mod 
+# location 
+# organizer 
+# priority 
+# dtstamp 
+# seq 
+# status 
+# summary 
+# transp 
+# uid 
+# url 
+# recurid 
+#
+# either 'dtend' or 'duration' may appear in a 'eventprop', but 'dtend' and 'duration'
+# MUST NOT occur in the same 'eventprop'
+# dtend 
+# duration 
+#
+# the following are optional, and MAY occur more than once
+# attach 
+# attendee 
+# categories 
+# comment 
+# contact 
+# exdate 
+# exrule 
+# rstatus 
+# related 
+# resources 
+# rdate 
+# rrule 
+# x-prop
+#----------------------------------------------------------------------------------------------------------
+
+    my $vCalendar = shift;
+    my %vevent;
+    my $vevent = \%vevent;
+
+    my @attach;
+    my $attach = \@attach;
+    my @attendee;
+    my $attendee = \@attendee;
+    my @categories;
+    my $categories = \@categories;
+    my @comment;
+    my $comment = \@comment;
+    my @contact;
+    my $contact = \@contact;
+    my @exdate;
+    my $exdate = \@exdate;
+    my @exrule;
+    my $exrule = \@exrule;
+    my @rstatus;
+    my $rstatus = \@rstatus;
+    my @related;
+    my $related = \@related;
+    my @resources;
+    my $resources = \@resources;
+    my @rdate;
+    my $rdate = \@rdate;
+    my @rrule;
+    my $rrule = \@rrule;
+    my @x_prop;
+    my $x_prop = \@x_prop;
+
+    $vevent = {
+	# Set zero-or-one properties
+	"class"        => undef,
+	"created"      => undef,
+	"description"  => undef,
+	"dtstart"      => undef,
+	"geo"          => undef,
+	"last-mod"     => undef,
+	"location"     => undef,
+	"organizer"    => undef,
+	"priority"     => undef,
+        "dtstamp"      => undef,
+        "seq"          => undef,
+        "status"       => undef,
+	"summary"      => undef, 
+	"transp"       => undef,
+        "uid"          => undef, 
+        "url"          => undef,
+	"recurid"      => undef,
+	# Next two properties are zero-or-one, and are mutually exclusive.
+	# This should be handled in the parse/manipulate methods.
+	"dtend"        => undef,
+	"duration"     => undef,
+        # The rest are zero-or-more properties, and so will be defined as
+	# arrays.
+	"attach"       => $attach, 
+	"attendee"     => $attendee,
+	"categories"   => $categories,
+	"comment"      => $comment,
+        "contact"      => $contact,
+	"exdate"       => $exdate, 
+	"exrule"       => $exrule,
+	"rstatus"      => $rstatus,
+	"related"      => $related,
+	"resources"    => $resources,
+	"rdate"        => $rdate,
+	"rrule"        => $rrule,
+	"x-prop"       => $x_prop,
+    };
+
+  
+    push(@{$vCalendar->{'vevents'}},$vevent);
+    return $vCalendar;
+}
+
+sub event_set {
+#--------------------------------------------------------------
+# Useage:
+#         $vCalendar->event_set($eventnum,$property,$value);
+#                       WHERE                               
+#         $eventnum = index of event OR 'new'
+#         $property = property name
+#         $value    = value of property
+#
+# Purpose:
+#         Sets event subtags.
+#---------------------------------------------------------------
+    my $vCalendar = shift;
+    my $vevent = shift;
+    my $key = shift;
+    my @values = @_;
+    print "Passed: " . $vevent . " Counted: " . $vCalendar->event_count . "\n";
+    if ($vevent < $vCalendar->event_count) {
+	#-----------------------------------------#
+	# Good Case 1: Numeric index within range.#
+	#-----------------------------------------#
+	#$vCalendar->{'vevents'}->[$vevent]->{$key} = @values;
+	my $callstring;
+	$callstring .= "Parse::vCalendar::Tags";
+	$callstring .= "('";
+	$callstring .= $key;
+	$callstring .= "',";
+	$callstring .= \@values;
+	$callstring .= ")";
+	print $callstring . "\n";
+#	print (eval "$vCalendar->$callstring");
+	$vCalendar->new_event;
+	print "\nDone done done.\n";
+
+    } elsif ($vevent eq 'new') {
+	#---------------------------------------#
+	# Good Case 2: New subtag instantiated. #
+	#---------------------------------------#
+	$vCalendar->vCalendar::new_event;
+
+    } else {
+	# Bad Case.
+	if ($vCalendar->{'warnings'} && event_count() < $vevent) {
+	    print STDERR "Warning: No events currently defined for this calendar.\n";
+	} elsif ($vCalendar->{'errors'}) {
+	    print STDERR "Warning: Index value used in calling event_set incorrect (value was '" . $vevent . "')\n";
+	}
+    }
+    return $vCalendar;
+}
+
+sub event_count {
+    my $vCalendar = shift;
+    my $count = @{$vCalendar->{'vevents'}};
+    return $count;
+}
+
+sub new_todo {
+#----------------------------------------------------------------------------------------------------------
+# vToDo Properties (tags within vToDo blocks):
+#
+# the following are optional, but MUST NOT occur more than once
+# class 
+# completed 
+# created 
+# description 
+# dtstamp 
+# dtstart 
+# geo 
+# last-mod 
+# location 
+# organizer 
+# percent 
+# priority 
+# recurid 
+# seq 
+# status 
+# summary 
+# uid 
+# url 
+#
+# either 'due' or 'duration' may appear in a 'todoprop', but 'due' and 'duration' MUST NOT occur in the 
+# same 'todoprop'
+# due 
+# duration 
+#
+# the following are optional, and MAY occur more than once
+# attach 
+# attendee 
+# categories 
+# comment 
+# contact 
+# exdate 
+# exrule 
+# rstatus 
+# related 
+# resources 
+# rdate 
+# rrule 
+# x-prop
+#----------------------------------------------------------------------------------------------------------
+    my $vCalendar = shift;
+    my %vtodo;
+    my $vtodo = \%vtodo;
+
+    my @attach;
+    my $attach = \@attach;
+    my @attendee;
+    my $attendee = \@attendee;
+    my @categories;
+    my $categories = \@categories;
+    my @comment;
+    my $comment = \@comment;
+    my @contact;
+    my $contact = \@contact;
+    my @exdate;
+    my $exdate = \@exdate;
+    my @exrule;
+    my $exrule = \@exrule;
+    my @rstatus;
+    my $rstatus = \@rstatus;
+    my @related;
+    my $related = \@related;
+    my @resources;
+    my $resources = \@resources;
+    my @rdate;
+    my $rdate = \@rdate;
+    my @rrule;
+    my $rrule = \@rrule;
+    my @x_prop;
+    my $x_prop = \@x_prop;
+
+    $vtodo = {
+	# Set zero-to-one properties
+	"class"       => undef,
+	"completed"   => undef,
+	"created"     => undef,
+	"description" => undef,
+	"dtstamp"     => undef,
+	"dtstart"     => undef,
+	"geo"         => undef,
+	"last-mod"    => undef,
+	"location"    => undef,
+	"organizer"   => undef,
+	"percent"     => undef,
+	"priority"    => undef,
+	"recurid"     => undef,
+	"seq"         => undef,
+	"status"      => undef,
+	"summary"     => undef,
+	"uid"         => undef,
+	"url"         => undef,
+	# Next two properties are zero-or-one, and are mutually exclusive.
+	# This should be handled in the parse/manipulate methods.
+	"due"         => undef,
+	"duration"    => undef,
+        # The rest are zero-or-more properties, and so will be defined as
+	# arrays.
+	"attach"      => $attach,
+	"attendee"    => $attendee,
+	"categories"  => $categories,
+	"comment"     => $comment,
+	"contact"     => $contact,
+	"exdate"      => $exdate,
+	"exrule"      => $exrule,
+	"rstatus"     => $rstatus,
+	"related"     => $related,
+	"resources"   => $resources,
+	"rdate"       => $rdate,
+	"rrule"       => $rrule,
+	"x-prop"      => $x_prop,
+    };
+
+    push(@{$vCalendar->{'vtodos'}},$vtodo);
+    return $vCalendar;
+}
+
+sub todo_set {
+    my $vCalendar = shift;
+    my $vtodo = shift;
+    my $key = shift;
+    my $value = shift;
+    $vCalendar->{'vtodos'}->[$vtodo]->{$key} = $value;
+    return $vCalendar;
+
+}
+
+sub todo_count {
+    my $vCalendar = shift;
+    my $count = @{$vCalendar->{'vtodos'}};
+    return $count;
+}
+
+sub new_journal {
+#----------------------------------------------------------------------------------------------------------
+# vJournal Properties (tags within vJournal blocks):
+#
+# the following are optional, but MUST NOT occur more than once
+# class 
+# created 
+# description 
+# dtstart 
+# dtstamp 
+# last-mod 
+# organizer 
+# recurid 
+# seq 
+# status 
+# summary 
+# uid 
+# url 
+#
+# the following are optional,
+# and MAY occur more than once
+#
+# attach 
+# attendee 
+# categories 
+# comment 
+# contact 
+# exdate 
+# exrule 
+# related 
+# rdate 
+# rrule 
+# rstatus 
+# x-prop
+#----------------------------------------------------------------------------------------------------------
+    my $vCalendar = shift;
+    my %vjournal;
+    my $vjournal = \%vjournal;
+
+    my @attach;
+    my $attach = \@attach;
+    my @attendee;
+    my $attendee = \@attendee;
+    my @categories;
+    my $categories = \@categories;
+    my @comment;
+    my $comment = \@comment;
+    my @contact;
+    my $contact = \@contact;
+    my @exdate;
+    my $exdate = \@exdate;
+    my @exrule;
+    my $exrule = \@exrule;
+    my @related;
+    my $related = \@related;
+    my @rdate;
+    my $rdate = \@rdate;
+    my @rrule;
+    my $rrule = \@rrule;
+    my @rstatus;
+    my $rstatus = \@rstatus;
+    my @x_prop;
+    my $x_prop = \@x_prop;
+
+
+    $vjournal = {
+	# Set zero-to-one properties
+	"class"        => undef,
+	"created"      => undef,
+	"description"  => undef,
+	"dtstart"      => undef,
+	"dtstamp"      => undef,
+	"last-mod"     => undef,
+	"organizer"    => undef,
+	"recurid"      => undef,
+	"seq"          => undef,
+	"status"       => undef,
+	"summary"      => undef,
+	"uid"          => undef,
+	"url"          => undef,
+        # The rest are zero-or-more properties, and so will be defined as
+	# arrays.
+	"attach"       => $attach,
+	"attendee"     => $attendee,
+	"categories"   => $categories,
+	"comment"      => $comment,
+	"contact"      => $contact,
+	"exdate"       => $exdate,
+	"exrule"       => $exrule,
+	"related"      => $related,
+	"rdate"        => $rdate,
+	"rrule"        => $rrule,
+	"rstatus"      => $rstatus,
+	"x-prop"       => $x_prop,
+    };
+
+
+    push(@{$vCalendar->{'vjournals'}},$vjournal);
+    return $vCalendar;
+}
+
+sub journal_set {
+    my $vCalendar = shift;
+    my $vjournal = shift;
+    my $key = shift;
+    my $value = shift;
+    $vCalendar->{'vjournals'}->[$vjournal]->{$key} = $value;
+    return $vCalendar;
+
+}
+
+sub journal_count {
+    my $vCalendar = shift;
+    my $count = @{$vCalendar->{'vjournals'}};
+    return $count;
+}
+
+sub event {
+    my $vCalendar = shift;
+    my $vevent_output = "";
+    #--------------------------------------
+    # Base case: Return all vEvent objects. 
+    #--------------------------------------
+    $vevent_output .= "BEGIN:VEVENT\n";
+
+    $vevent_output .= "END:VEVENT\n";
+    return $vevent_output;
+}
+
+sub todo {
+    my $vCalendar = shift;
+    my $vevent_output = "";
+    #--------------------------------------
+    # Base case: Return all vEvent objects. 
+    #--------------------------------------
+    $vevent_output .= "BEGIN:VTODO\n";
+
+    $vevent_output .= "END:VTODO\n";
+    return $vevent_output;
+}
+
+sub journal {
+    my $vCalendar = shift;
+    my $vevent_output = "";
+    #--------------------------------------
+    # Base case: Return all vJournal objects. 
+    #--------------------------------------
+    $vevent_output .= "BEGIN:VJOURNAL\n";
+
+    $vevent_output .= "END:VJOURNAL\n";
+    return $vevent_output;
+}
+
+
+sub attach  {
+    my %attach;
+    my $attach = \%attach;
+
+    return $attach;
+}
+
+sub attendee  {
+    my %attendee;
+    my $attendee = \%attendee;
+
+    return $attendee;
+}
+
+sub categories  {
+    my %categories;
+    my $categories = \%categories;
+
+    return $categories;
+}
+
+sub class  {
+    my %class;
+    my $class = \%class;
+
+    return $class;
+}
+
+sub comment  {
+    my %comment;
+    my $comment = \%comment;
+
+    return $comment;
+}
+
+sub completed  {
+    my %completed;
+    my $completed = \%completed;
+
+    return $completed;
+}
+
+sub contact  {
+    my %contact;
+    my $contact = \%contact;
+
+    return $contact;
+}
+
+sub created  {
+    my %created;
+    my $created = \%created;
+
+    return $created;
+}
+
+sub description  {
+    my %description;
+    my $description = \%description;
+
+    return $description;
+}
+
+sub dtend  {
+    my %dtend;
+    my $dtend = \%dtend;
+
+    return $dtend;
+}
+
+sub dtstamp  {
+    my %dtstamp;
+    my $dtstamp = \%dtstamp;
+
+    return $dtstamp;
+}
+
+sub dtstart  {
+    my %dtstart;
+    my $dtstart = \%dtstart;
+
+    return $dtstart;
+}
+
+sub due  {
+    my %due;
+    my $due = \%due;
+
+    return $due;
+}
+
+sub duration  {
+    my %duration;
+    my $duration = \%duration;
+
+    return $duration;
+}
+
+sub exdate  {
+    my %exdate;
+    my $exdate = \%exdate;
+
+    return $exdate;
+}
+
+sub exrule  {
+    my %exrule;
+    my $exrule = \%exrule;
+
+    return $exrule;
+}
+
+sub geo  {
+    my %geo;
+    my $geo = \%geo;
+
+    return $geo;
+}
+
+sub last_mod  {
+    my %last_mod;
+    my $last_mod = \%last_mod;
+
+    return $last_mod;
+}
+
+sub location  {
+    my %location;
+    my $location = \%location;
+
+    return $location;
+}
+
+sub organizer  {
+    my %organizer;
+    my $organizer = \%organizer;
+
+    return $organizer;
+}
+
+sub percent  {
+    my %percent;
+    my $percent = \%percent;
+
+    return $percent;
+}
+
+sub priority  {
+    my %priority;
+    my $priority = \%priority;
+
+    return $priority;
+}
+
+sub rdate  {
+    my %rdate;
+    my $rdate = \%rdate;
+
+    return $rdate;
+}
+
+sub recurid  {
+    my %recurid;
+    my $recurid = \%recurid;
+
+    return $recurid;
+}
+
+sub related  {
+    my %related;
+    my $related = \%related;
+
+    return $related;
+}
+
+sub resources  {
+    my %resources;
+    my $resources = \%resources;
+
+    return $resources;
+}
+
+sub rrule  {
+    my %rrule;
+    my $rrule = \%rrule;
+
+    return $rrule;
+}
+
+sub rstatus  {
+    my %rstatus;
+    my $rstatus = \%rstatus;
+
+    return $rstatus;
+}
+
+sub seq  {
+    my %seq;
+    my $seq = \%seq;
+
+    return $seq;
+}
+
+sub status  {
+    my %status;
+    my $status = \%status;
+
+    return $status;
+}
+
+sub summary  {
+    my %summary;
+    my $summary = \%summary;
+
+    return $summary;
+}
+
+sub transp  {
+    my %transp;
+    my $transp = \%transp;
+
+    return $transp;
+}
+
+sub uid  {
+    my %uid;
+    my $uid = \%uid;
+
+    return $uid;
+}
+
+sub url  {
+    my %url;
+    my $url = \%url;
+
+    return $url;
+}
+
+sub x_prop  {
+    my %x_prop;
+    my $x_prop = \%x_prop;
+
+    return $x_prop;
+}
+
+# comment (all)
+# completed (1)
+# contact (all)
+# created (all)
+# description (all)
+# dtend (1)
+# dtstamp (all)
+# dtstart (all)
+# due (1)
+# duration (2)
+# exdate (all)
+# exrule (all)
+# geo (2)
+# last-mod (all)
+# location (2)
+# organizer (all)
+# percent (1)
+# priority (2)
+# rdate (all)
+# recurid (all)
+# related (all)
+# resources (2)
+# rrule (all)
+# rstatus (all)
+# seq (all)
+# status (all)
+# summary (all)
+# transp (1)
+# uid (all)
+# url (all)
+# x-prop (all)
+
+
+
+sub calendar {
+    my $vCalendar = shift;
+    my $output = "";
+
+    $output .= "BEGIN:VCALENDAR\n";
+    $output .= "VERSION:" . $vCalendar->{'version'} .  "\n";
+    $output .= "PRODID:" . $vCalendar->{'prodid'} . "\n";
+
+    for (my $x = 0; $x <= ($vCalendar->event_count - 1); $x++) {
+	$output .= $vCalendar->event($x);
+    }
+    for (my $x = 0; $x <= ($vCalendar->todo_count - 1); $x++) {
+	$output .= $vCalendar->todo($x);
+    }
+    for (my $x = 0; $x <= ($vCalendar->journal_count - 1); $x++) {
+	$output .= $vCalendar->journal($x);
+    }
+
+    $output .= "END:VCALENDAR\n";
+
+    return $output;
+}
+
+sub fold {
+    my @inlines = split(/\n/,shift);
+    my $shortline;
+    my $outline;
+    
+    foreach my $line (@inlines) {
+	my $foldswitch = 'N';
+	if (length($line) > 75) {
+	    $foldswitch = 'Y';
+	    while (length($line) > 75) {
+		$shortline = substr($line,0,75);
+		$line = substr($line,75);
+		$outline .= $shortline . "\n ";
+	    }
+	}
+	$outline .= $line;
+	$outline .= "\n";
+    }
+    
+    return $outline;
+}
+
+sub unfold {
+#---------------------------------#
+# Useage:                         #
+#      unfold(@lines_to_unfold);  #
+#                                 #
+# Purpose:                        #
+#      'Unfolds' multiple-line    #
+#      single entry vCard fields  #
+#      in the manner described in #
+#      RFC 2426.                  #
+#---------------------------------#
+    my @inlines = @_;
+    my $outline = "";
+    my @outlines;
+
+    foreach my $line (@inlines) {
+	$line =~ s/\n$//;
+	if ($line =~ /^ /) {
+	    $line =~ s/^ //;
+	    $outline .= $line;
+	} else {
+	    #$outline .= "\n";
+	    push(@outlines,$outline);
+	    $outline = $line;
+	}
+    }
+    return(@outlines);
+}
+
+
+
+1;    # All perl module must return true at the completion of loading
+__END__
+
+=head1 NAME
+
+Parse::vCalendar.pm - A module to create, parse, and manipulate vCalendar objects.
+
+=head1 SYNOPSIS
+
+   Give a simple example of the module's use
+
+=head1 DESCRIPTION
+
+
+=head1 METHODS
+
+  new -  Creates a new instance
+  some_other_function - ([param_name],value) -  detailed description of the use each function
+
+=head1 PARAMETERS
+
+	# well known parameters for this object, normally passed into the contruction as a hash, 
+	# or gotten and set using the getValue() and setValue() calls.
+
+  text - 
+  image - 
+
+=head1 AUTHOR
+
+John F. Zmrotchek
+HBE	scott@hbe.ca
+Jan 12/99
+
+=head1 REVISION HISTORY
+
+  $Log: vCalendar.3rd_draft,v $
+  Revision 1.1  1999/09/02 19:53:51  gozer
+  New Namespace
+
+  Revision 1.2  1999/08/18 21:25:49  jzmrotchek
+  Cleaned up some code in the event_set() and event() methods of vCalendar.pm
+
+   
+
+=head1 SEE ALSO
+
+perl(1), vCard(3), RFC2445
+
+=cut

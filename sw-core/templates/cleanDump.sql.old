@@ -1,0 +1,648 @@
+# MySQL dump 6.0
+#
+# Host: father    Database: SWcleanDUMP25470
+#--------------------------------------------------------
+# Server version	3.23.5-alpha-log
+
+#
+# Table structure for table 'appaccess'
+#
+CREATE TABLE appaccess (
+  aid varchar(16) DEFAULT '' NOT NULL,
+  action enum('DENY','ALLOW') DEFAULT 'DENY' NOT NULL,
+  target enum('GUEST','ANY','GROUP','USER') DEFAULT 'GUEST' NOT NULL,
+  groupid int(10) DEFAULT '0' NOT NULL,
+  uid int(11) DEFAULT '0' NOT NULL,
+  KEY aid (aid),
+  KEY action (action),
+  KEY target (target),
+  KEY groupid (groupid),
+  KEY uid (uid)
+);
+
+#
+# Dumping data for table 'appaccess'
+#
+
+INSERT INTO appaccess VALUES ('1','ALLOW','GUEST',0,0);
+INSERT INTO appaccess VALUES ('2','ALLOW','ANY',0,0);
+
+#
+# Table structure for table 'apps'
+#
+CREATE TABLE apps (
+  aid int(11) NOT NULL auto_increment,
+  appid varchar(16) DEFAULT '' NOT NULL,
+  name varchar(128) DEFAULT '' NOT NULL,
+  package varchar(128) DEFAULT '' NOT NULL,
+  certified enum('true','false') DEFAULT 'true' NOT NULL,
+  lastmodified timestamp(14),
+  comment blob DEFAULT '' NOT NULL,
+  datatypes varchar(128) DEFAULT '' NOT NULL,
+  appuri varchar(128),
+  author varchar(64) DEFAULT '' NOT NULL,
+  category varchar(64) DEFAULT '' NOT NULL,
+  version varchar(8) DEFAULT 'v0.01' NOT NULL,
+  worktab_constant char(1) DEFAULT 'N' NOT NULL,
+  icon_name varchar(64) DEFAULT 'default.gif' NOT NULL,
+  content varchar(64),
+  PRIMARY KEY (aid),
+  KEY category (category),
+  KEY author (author)
+);
+
+#
+# Dumping data for table 'apps'
+#
+
+INSERT INTO apps VALUES (1,'APPADMIN','SmartWorker Application Administration','SW::App::Admin::Applications','true',19991012173234,'Appadmin','',NULL,'','','v0.01','N','default',NULL);
+INSERT INTO apps VALUES (2,'APPADMIN','SmartWorker Application Administration','SW::App::MyApp','true',19991012173234,'Appadmin','',NULL,'','','v0.01','N','default',NULL);
+
+#
+# Table structure for table 'authd'
+#
+CREATE TABLE authd (
+  uid int(10),
+  password varchar(32)
+);
+
+#
+# Dumping data for table 'authd'
+#
+
+
+#
+# Table structure for table 'authentication'
+#
+CREATE TABLE authentication (
+  uid int(10) NOT NULL auto_increment,
+  username varchar(32) DEFAULT '' NOT NULL,
+  password varchar(32) DEFAULT '' NOT NULL,
+  forw_addr varchar(128),
+  PRIMARY KEY (uid),
+  KEY username (username),
+  UNIQUE uid (uid,username),
+  KEY username_2 (username)
+);
+
+#
+# Dumping data for table 'authentication'
+#
+
+INSERT INTO authentication VALUES (1,'demo','/gHOKn+6yPr67XyYKgTiKQ',NULL);
+
+#
+# Table structure for table 'bookmark'
+#
+CREATE TABLE bookmark (
+  id int(14) NOT NULL auto_increment,
+  title varchar(64) DEFAULT '' NOT NULL,
+  url text DEFAULT '' NOT NULL,
+  urldesc text DEFAULT '' NOT NULL,
+  PRIMARY KEY (id)
+);
+
+#
+# Dumping data for table 'bookmark'
+#
+
+
+#
+# Table structure for table 'bookmarklist'
+#
+CREATE TABLE bookmarklist (
+  lid int(12) NOT NULL auto_increment,
+  uid int(11) DEFAULT '0' NOT NULL,
+  listname varchar(64) DEFAULT '' NOT NULL,
+  listdesc text,
+  PRIMARY KEY (lid),
+  KEY uid (uid),
+  KEY listname (listname)
+);
+
+#
+# Dumping data for table 'bookmarklist'
+#
+
+
+#
+# Table structure for table 'bookmarks'
+#
+CREATE TABLE bookmarks (
+  bid int(14) NOT NULL auto_increment,
+  uid int(11) DEFAULT '0' NOT NULL,
+  category varchar(64) DEFAULT 'All' NOT NULL,
+  url text,
+  urldesc text,
+  title varchar(64) DEFAULT '' NOT NULL,
+  PRIMARY KEY (bid),
+  KEY uid (uid),
+  KEY category (category),
+  KEY title (title)
+);
+
+#
+# Dumping data for table 'bookmarks'
+#
+
+
+#
+# Table structure for table 'broadcast'
+#
+CREATE TABLE broadcast (
+  id int(11) DEFAULT '0' NOT NULL,
+  uid int(11) DEFAULT '0' NOT NULL
+);
+
+#
+# Dumping data for table 'broadcast'
+#
+
+
+#
+# Table structure for table 'broadcast_messages'
+#
+CREATE TABLE broadcast_messages (
+  id int(11) NOT NULL auto_increment,
+  message blob DEFAULT '' NOT NULL,
+  author varchar(64),
+  title varchar(64),
+  date timestamp(14),
+  PRIMARY KEY (id)
+);
+
+#
+# Dumping data for table 'broadcast_messages'
+#
+
+
+#
+# Table structure for table 'category'
+#
+CREATE TABLE category (
+  category varchar(32) DEFAULT '' NOT NULL,
+  type varchar(32) DEFAULT '' NOT NULL,
+  content text DEFAULT '' NOT NULL
+);
+
+#
+# Dumping data for table 'category'
+#
+
+
+#
+# Table structure for table 'chat_auth'
+#
+CREATE TABLE chat_auth (
+  uid int(11),
+  auth varchar(64)
+);
+
+#
+# Dumping data for table 'chat_auth'
+#
+
+
+#
+# Table structure for table 'chat_presence'
+#
+CREATE TABLE chat_presence (
+  uid int(11),
+  chan varchar(64)
+);
+
+#
+# Dumping data for table 'chat_presence'
+#
+
+
+#
+# Table structure for table 'chat_users'
+#
+CREATE TABLE chat_users (
+  name varchar(64),
+  uid int(11)
+);
+
+#
+# Dumping data for table 'chat_users'
+#
+
+
+#
+# Table structure for table 'config'
+#
+CREATE TABLE config (
+  id int(11) NOT NULL auto_increment,
+  category varchar(32) DEFAULT '' NOT NULL,
+  type varchar(32) DEFAULT '' NOT NULL,
+  content text DEFAULT '' NOT NULL,
+  name text,
+  PRIMARY KEY (id)
+);
+
+#
+# Dumping data for table 'config'
+#
+
+
+#
+# Table structure for table 'contacts'
+#
+CREATE TABLE contacts (
+  id int(11) NOT NULL auto_increment,
+  bday date DEFAULT '0000-00-00' NOT NULL,
+  tel mediumblob DEFAULT '' NOT NULL,
+  email varchar(128) DEFAULT '' NOT NULL,
+  vcard longblob DEFAULT '' NOT NULL,
+  firstName varchar(64) DEFAULT '' NOT NULL,
+  lastName varchar(64) DEFAULT '' NOT NULL,
+  company varchar(64),
+  PRIMARY KEY (id),
+  KEY name (bday),
+  UNIQUE cid (id)
+);
+
+#
+# Dumping data for table 'contacts'
+#
+
+
+#
+# Table structure for table 'cryptaliases'
+#
+CREATE TABLE cryptaliases (
+  alias varchar(16) DEFAULT '' NOT NULL,
+  forw_addr varchar(128) DEFAULT '' NOT NULL,
+  password varchar(128) DEFAULT '' NOT NULL,
+  PRIMARY KEY (alias)
+);
+
+#
+# Dumping data for table 'cryptaliases'
+#
+
+
+#
+# Table structure for table 'dataaccess'
+#
+CREATE TABLE dataaccess (
+  groupid int(11),
+  perm tinyint(4) DEFAULT '0' NOT NULL,
+  owner int(11) DEFAULT '0' NOT NULL,
+  userid int(11),
+  id int(11) DEFAULT '0' NOT NULL,
+  KEY owner (owner),
+  KEY id (id)
+);
+
+#
+# Dumping data for table 'dataaccess'
+#
+
+
+#
+# Table structure for table 'datainfo'
+#
+CREATE TABLE datainfo (
+  id int(11) DEFAULT '0' NOT NULL,
+  type varchar(16) DEFAULT '' NOT NULL,
+  name varchar(64) DEFAULT '' NOT NULL,
+  creator int(11) DEFAULT '0' NOT NULL,
+  appid varchar(16) DEFAULT '' NOT NULL,
+  PRIMARY KEY (id),
+  KEY type (type),
+  KEY name (name),
+  KEY creator (creator),
+  KEY appid (appid)
+);
+
+#
+# Dumping data for table 'datainfo'
+#
+
+
+#
+# Table structure for table 'datamap'
+#
+CREATE TABLE datamap (
+  id int(11) NOT NULL auto_increment,
+  dataclass varchar(64) DEFAULT 'SW::Data' NOT NULL,
+  dataid int(11) DEFAULT '0' NOT NULL,
+  lockstat int(11),
+  PRIMARY KEY (id),
+  KEY dataclass (dataclass),
+  KEY dataid (dataid)
+);
+
+#
+# Dumping data for table 'datamap'
+#
+
+
+#
+# Table structure for table 'datatypes'
+#
+CREATE TABLE datatypes (
+  datatype varchar(16) DEFAULT '' NOT NULL,
+  hidden enum('true','false') DEFAULT 'false',
+  tbl varchar(32) DEFAULT '' NOT NULL,
+  pkg varchar(64) DEFAULT '' NOT NULL,
+  iconuri varchar(128),
+  apppkg varchar(128),
+  PRIMARY KEY (datatype)
+);
+
+#
+# Dumping data for table 'datatypes'
+#
+
+
+#
+# Table structure for table 'dictionnary'
+#
+CREATE TABLE dictionnary (
+  rid int(16) NOT NULL auto_increment,
+  token varchar(32) DEFAULT '' NOT NULL,
+  lang varchar(5) DEFAULT '' NOT NULL,
+  value varchar(128) DEFAULT '' NOT NULL,
+  PRIMARY KEY (rid)
+);
+
+#
+# Dumping data for table 'dictionnary'
+#
+
+
+#
+# Table structure for table 'event_notification'
+#
+CREATE TABLE event_notification (
+  sendTo varchar(64),
+  onTime timestamp(14),
+  aboutEvent int(11),
+  etc blob
+);
+
+#
+# Dumping data for table 'event_notification'
+#
+
+
+#
+# Table structure for table 'events'
+#
+CREATE TABLE events (
+  calendar int(11) DEFAULT '0' NOT NULL,
+  id int(11) NOT NULL auto_increment,
+  summary varchar(64) DEFAULT '' NOT NULL,
+  priority enum('low','medium','high') DEFAULT 'medium' NOT NULL,
+  category varchar(64) DEFAULT '' NOT NULL,
+  eventType enum('todo','allday','appointment') DEFAULT 'appointment' NOT NULL,
+  notes text DEFAULT '' NOT NULL,
+  dueDate int(11) DEFAULT '0' NOT NULL,
+  date varchar(20) DEFAULT '19990101' NOT NULL,
+  notifyBy set('email','popup') DEFAULT '' NOT NULL,
+  notifyScale enum('days','hours') DEFAULT 'days' NOT NULL,
+  notifyTime int(11) DEFAULT '0' NOT NULL,
+  repeat enum('no','daily','weekly','monthly') DEFAULT 'no' NOT NULL,
+  repeatDays int(11) DEFAULT '1' NOT NULL,
+  repeatUntil varchar(20) DEFAULT '19990101' NOT NULL,
+  startTime varchar(20) DEFAULT '0900' NOT NULL,
+  duration varchar(20) DEFAULT '60' NOT NULL,
+  done int(11) DEFAULT '0' NOT NULL,
+  PRIMARY KEY (id),
+  KEY category (category)
+);
+
+#
+# Dumping data for table 'events'
+#
+
+
+#
+# Table structure for table 'files'
+#
+CREATE TABLE files (
+  id int(11) NOT NULL auto_increment,
+  lastmodified timestamp(14),
+  mimetype varchar(64) DEFAULT 'text/plain' NOT NULL,
+  filed char(1) DEFAULT 'N' NOT NULL,
+  PRIMARY KEY (id),
+  KEY mimetype (mimetype),
+  KEY filed (filed)
+);
+
+#
+# Dumping data for table 'files'
+#
+
+
+#
+# Table structure for table 'fredtable'
+#
+CREATE TABLE fredtable (
+  id int(11) NOT NULL auto_increment,
+  storage blob,
+  number int(10),
+  PRIMARY KEY (id)
+);
+
+#
+# Dumping data for table 'fredtable'
+#
+
+
+#
+# Table structure for table 'general'
+#
+CREATE TABLE general (
+  name varchar(64),
+  value blob,
+  lastmod timestamp(14)
+);
+
+#
+# Dumping data for table 'general'
+#
+
+
+#
+# Table structure for table 'groupmembership'
+#
+CREATE TABLE groupmembership (
+  groupid int(11) DEFAULT '0' NOT NULL,
+  userid int(11) DEFAULT '0' NOT NULL,
+  perm tinyint(4) DEFAULT '1' NOT NULL,
+  status tinyint(4) DEFAULT '1' NOT NULL,
+  joined varchar(14) DEFAULT '' NOT NULL,
+  inviter int(11) DEFAULT '0' NOT NULL,
+  KEY grp (groupid),
+  KEY user (userid),
+  KEY inviter (inviter),
+  KEY joined (joined),
+  KEY status (status),
+  KEY perm (perm)
+);
+
+#
+# Dumping data for table 'groupmembership'
+#
+
+
+#
+# Table structure for table 'groups'
+#
+CREATE TABLE groups (
+  groupid int(11) NOT NULL auto_increment,
+  groupname varchar(64) DEFAULT '' NOT NULL,
+  ownerid int(11) DEFAULT '0' NOT NULL,
+  profile blob DEFAULT '' NOT NULL,
+  home varchar(32) DEFAULT '' NOT NULL,
+  quota smallint(6) DEFAULT '0' NOT NULL,
+  ocount smallint(6) DEFAULT '0' NOT NULL,
+  lastseen timestamp(14),
+  perm smallint(6) DEFAULT '0' NOT NULL,
+  created varchar(14) DEFAULT '' NOT NULL,
+  PRIMARY KEY (groupid),
+  KEY user (groupname)
+);
+
+#
+# Dumping data for table 'groups'
+#
+
+
+#
+# Table structure for table 'md5aliases'
+#
+CREATE TABLE md5aliases (
+  alias varchar(32) DEFAULT '' NOT NULL,
+  forw_addr varchar(128) DEFAULT '' NOT NULL,
+  password varchar(100) DEFAULT '' NOT NULL,
+  PRIMARY KEY (alias)
+);
+
+#
+# Dumping data for table 'md5aliases'
+#
+
+
+#
+# Table structure for table 'mxaliases'
+#
+CREATE TABLE mxaliases (
+  alias varchar(16) DEFAULT '' NOT NULL,
+  forw_addr varchar(128) DEFAULT '' NOT NULL,
+  password varchar(16) DEFAULT '' NOT NULL,
+  PRIMARY KEY (alias)
+);
+
+#
+# Dumping data for table 'mxaliases'
+#
+
+
+#
+# Table structure for table 'mysql_auth'
+#
+CREATE TABLE mysql_auth (
+  uid varchar(32) DEFAULT '' NOT NULL,
+  token varchar(64) DEFAULT '' NOT NULL,
+  lastmod timestamp(14),
+  PRIMARY KEY (uid)
+);
+
+#
+# Dumping data for table 'mysql_auth'
+#
+
+
+#
+# Table structure for table 'objects'
+#
+CREATE TABLE objects (
+  id int(11) NOT NULL auto_increment,
+  storage blob DEFAULT '' NOT NULL,
+  lastmodified timestamp(14),
+  PRIMARY KEY (id)
+);
+
+#
+# Dumping data for table 'objects'
+#
+
+
+#
+# Table structure for table 'pwdreminder'
+#
+CREATE TABLE pwdreminder (
+  uid int(11) DEFAULT '0' NOT NULL,
+  pwd varchar(32) DEFAULT '' NOT NULL,
+  checksum varchar(32) DEFAULT '' NOT NULL,
+  q1 varchar(128),
+  q2 varchar(128),
+  q3 varchar(128),
+  PRIMARY KEY (uid)
+);
+
+#
+# Dumping data for table 'pwdreminder'
+#
+
+
+#
+# Table structure for table 'sessions'
+#
+CREATE TABLE sessions (
+  id varchar(16) DEFAULT '' NOT NULL,
+  length int(11) DEFAULT '0' NOT NULL,
+  a_session longblob DEFAULT '' NOT NULL,
+  lastmod timestamp(14),
+  PRIMARY KEY (id),
+  UNIQUE id (id)
+);
+
+#
+# Dumping data for table 'sessions'
+#
+
+
+#
+# Table structure for table 'test'
+#
+CREATE TABLE test (
+  id int(11) DEFAULT '0' NOT NULL,
+  link int(11) DEFAULT '0' NOT NULL,
+  PRIMARY KEY (id),
+  KEY linkidx (link)
+);
+
+#
+# Dumping data for table 'test'
+#
+
+
+#
+# Table structure for table 'users'
+#
+CREATE TABLE users (
+  uid int(11) NOT NULL auto_increment,
+  profile blob DEFAULT '' NOT NULL,
+  home varchar(32) DEFAULT '' NOT NULL,
+  quota smallint(6) DEFAULT '0' NOT NULL,
+  ocount smallint(6) DEFAULT '0' NOT NULL,
+  lastseen timestamp(14),
+  level smallint(6) DEFAULT '0' NOT NULL,
+  email varchar(64) DEFAULT '' NOT NULL,
+  locks varchar(64),
+  du mediumint(8) unsigned,
+  PRIMARY KEY (uid)
+);
+
+#
+# Dumping data for table 'users'
+#
+
+INSERT INTO users VALUES (200,'{}','0',0,0,19991115011646,0,'','undef',0);
+

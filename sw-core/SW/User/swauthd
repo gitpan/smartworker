@@ -1,0 +1,560 @@
+#!/usr/bin/perl 
+#My little 0.02c Authorization daemon for SmartWorker
+
+#------------------------------------------------------------
+#   SmartWorker - HBE Software, Montreal, Canada
+#    for information contact smartworker@hbe.ca
+#------------------------------------------------------------
+# SWauthd
+#  SmartWorker Authentication Daeomn 
+# Deals with every aspect of authentication for increased
+# security.  Includes user creation/deletion/chpasswd/login
+#------------------------------------------------------------
+#  CVS ID tag...
+# $Id: swauthd,v 1.16 1999/11/15 00:04:08 gozer Exp $
+#------------------------------------------------------------
+
+use strict;
+
+#swallow annoying DB warnings..
+$SIG{__WARN__} = sub { 1;} ; #INSTEAD we should log that stuff thru syslog
+
+use IO::Socket;
+use POSIX qw(:sys_wait_h);
+use DBI;
+use Term::ReadKey;
+
+my $served=			0;
+my $server_port=	"8512";
+my $serverString = 	"SWauthd v0.4";
+
+my $time_to_die = 	0;
+my $TIMEOUT = 		50;
+my $LISTEN_CONN = 	50;
+
+my $dbtype =		"mysql";
+my $database = 		"smartworker";
+my $host =  		"localhost";
+my $port =  		"3306";
+my $username = 		"authd";
+
+my $maildomain = 	"sw-test.hardboiledegg.com";
+
+my $waiting;
+my $client;
+my $server;
+my %childrens;
+
+
+my %restricted_users=(
+	'devel'		=> 1,
+	'od'		=> 1,
+	'bugs'  	=> 1,
+	'root'  	=> 1,
+	'admin'  	=> 1,
+	'info' 		=> 1,
+	'feedback' 	=> 1,
+	'help' 		=> 1,
+	'opendesk' 	=> 1,
+	'revolution'=> 1,
+	'test' 		=> 1,
+	'license' 	=> 1,
+	'guest' 	=> 1,
+	'user' 		=> 1,
+	'billgates' => 1,
+	'bugtrack' 	=> 1,
+	'satan' 	=> 1,
+	'jobs'		=> 1,
+	'hr'		=> 1,
+	);
+
+
+#use Sys::Syslog;
+#my $logopt = '';
+#my $facility ='user';
+#my $log = openlog $serverString, $logopt, $facility;
+
+print STDERR "Enter the DB password for $dbtype:$host:$database: ";
+
+ReadMode 'noecho';
+my $password = ReadLine(0);
+ReadMode 'normal';
+
+chomp $password;
+
+die "Can't connect to the db correctly " unless getdbh() && getdbh()->do("SELECT 1");
+
+my %METHOD = (	'AUTHMD5HEX'	=> sub { my ($challenge,$hash,$uid) = AUTH();
+													my $result = AUTHMD5HEX($challenge,$hash);
+													print $client "$uid:$result\r\n";
+													return;
+												},
+					'AUTHMD5BIN' 	=> sub { my ($challenge,$hash,$uid) = AUTH();
+													my $result = AUTHMD5BIN($challenge,$hash);
+													print $client "$uid:$result\r\n";
+													return;
+												},
+													
+					'AUTHMD5BASE64'=> sub { my ($challenge,$hash,$uid) = AUTH();
+													my $result = AUTHMD5BASE64($challenge,$hash);
+													print $client "$uid:$result\r\n";
+													return;
+												},
+					'SETUSER'		=> \&SETUSER,
+					'EDITUSERPWD'	=> \&EDITUSERPWD,
+					'EDITUSERNAME'	=> \&EDITUSERNAME,
+					'HELP'			=>	\&HELP,
+				);
+				
+#methods aliases
+$METHOD{'AUTHMD5'} = $METHOD{'AUTHMD5HEX'};
+$METHOD{'USERSET'} = $METHOD{'SETUSER'};
+
+#here we do an initial fork to detach from the console and become a daemon
+my $server_pid = fork;
+if ($server_pid)
+	{
+	print STDERR "$serverString : SmartWorker authentication daemon listening on port $server_port (pid:$server_pid)\n";
+	#syslog('info','$serverString : SmartWorker authentication daemon listening on port $server_port');
+	exit;
+	}
+die "Couldn't fork: $!" unless defined ($server_pid);
+
+#set up like a good little daemon
+POSIX::setsid() or die "Can't start a new session!";
+chroot "/";
+
+#A few signals for nice shutdowns
+$SIG{HUP}  = \&signal_handler_die;
+$SIG{TERM} = \&signal_handler_stop;	
+$SIG{CHLD} = sub { my $children = waitpid(-1,0); delete $childrens{$children}; };
+
+
+#Start listening for connections
+$server = IO::Socket::INET->new( LocalPort 	=> $server_port,
+											Type			=> SOCK_STREAM,
+											Reuse 		=> 1,
+											Listen		=> $LISTEN_CONN,
+										) or die "Could not open socket\n";
+
+
+#Loop until we are told to stop
+until ($time_to_die)
+	{	
+		$waiting = 1;
+		$client = $server->accept();	
+		$waiting = 0;
+		
+		$served++;
+		
+		#as soon as we get a request, fork it to a children
+		my $pid = fork;
+				
+		#if $pid is undef, the fork failed
+		while (!defined $pid)
+			{
+			#wait and try again until it works (or else DOS Attack vulnerability)
+			sleep 1;
+			$pid = fork;
+			} 
+		
+		if($pid) # we are the parent, so get back at accept asap
+			{		
+			close($client);	# we don't need it anymore
+			$childrens{$pid} = 'LIVING';
+			next;
+			}
+		else	# we are the child
+			{	
+			#first release the server socket asap
+			close($server);	
+			
+			#let's set up the signals
+			$SIG{ALRM} = sub { exit(1); }; 	
+			
+			#and since the only process that should kill us is our ancestor, ignore the rest
+			$SIG{HUP}  = 'IGNORE';
+			$SIG{TERM} = 'IGNORE';
+			
+			#make sure we do not stay around for too long (DOS Attack)
+			alarm($TIMEOUT);
+			print $client $serverString, "\r\n";
+			
+			#read the method request
+			my $method = <$client>;
+			chop $method;
+			chop $method;
+			$method = uc $method;
+			
+			if($METHOD{$method})
+				{
+				&{$METHOD{$method}};
+				}
+			else
+				{
+				print $client "ERR: METHOD UNKNOWN\r\n";
+				}
+			
+			#we are finished.
+			alarm(0);	#I know we will exit in a moment, but it's good practice to always reset an alarm you set
+			exit(1);
+			}	
+	}
+
+#terminate the listening , wait for children to die and return
+close($server);
+
+letChildrenDieInPeace();
+
+exit(1);
+
+
+#exits cleanly, waiting for all the childrens to complete their jobs
+sub signal_handler_stop {
+	print STDERR "[$$] Caught TERM message, attempting to cleanly stop!\n";
+	
+	if($waiting)
+		{ 
+		close($server); 
+		#let everyone timeout nice and easy...
+		letChildrenDieInPeace();
+		print STDERR "served $served requests.\n"; 
+		exit(1);
+		}
+	#make sure we die as soon as the next loop begins
+	$time_to_die = 1;
+}
+	
+#die right away, killing every living children also.
+sub signal_handler_die {
+	print STDERR "[$$] Caught HUP message, quitting then!\n";
+	close($server) if $server;
+	#slauther remaining childrens
+	foreach (keys %childrens)
+		{
+		print STDERR "Killing living children $_\n";
+		kill 'ALRM' , $_;
+		}
+	print STDERR "served $served requests.\n";
+	exit(1);
+	}
+
+#this waits for all the childs to finish what they are doing
+sub letChildrenDieInPeace {
+	my $children;
+	print STDERR "Waiting for living childrens [",(join ",", keys %childrens) ,"] to die\n" if %childrens;
+	$SIG{CHLD} = 'IGNORE';
+	while (1)
+		{
+		$children = waitpid(-1,0);
+		last if $children==-1;
+		print STDERR "[$children} died in peace\n";
+		delete $childrens{$children};
+		}	
+	return;
+	}
+
+
+
+use Digest::MD5 qw(md5_base64 md5 md5_hex);
+use MIME::Base64;
+
+sub AUTH {
+	#we read the challenge string
+	my $challenge = <$client>;
+	chop $challenge;
+	chop $challenge;
+
+	#and the username
+	my $username = <$client>;
+	chop $username;
+	chop $username;
+
+	#then fetch the MD5 hashed password for the specified user
+	my $sth = getdbh()->prepare("SELECT password, uid FROM authentication WHERE username='$username'");
+	$sth->execute() or die "Can't execute query!";
+	
+	my ($hash, $uid) = $sth->fetchrow_array;
+	unless ($hash) #oupss, the user isn't found
+		{
+		print $client "ERR: No such user\r\n";
+		exit(1);
+		}
+	return ($challenge,$hash,$uid);
+}
+
+#this is for MD5 checksums done in hex representation
+sub AUTHMD5HEX {
+	my ($challenge, $hash) = @_;
+	my $value = decode_base64($hash);
+	$value = unpack "H32", $value;
+	$value = $challenge . $value;
+	$value = md5($value);
+	$value = unpack "H32", $value;
+	return $value;
+	}
+	
+#this is for MD5 checksums done in Base64 representation
+sub AUTHMD5BASE64 {
+	my ($challenge, $hash) = @_;
+	$hash = encode_base64($hash);
+	return md5_base64($challenge . $hash);
+	}
+
+#this is for MD5 checksums done in binary representation
+sub AUTHMD5BIN {
+	my ($challenge, $hash) = @_;
+	return md5($challenge.$hash);
+	}
+
+sub EDITUSERPWD {
+	#we read the userid
+	my $userid = <$client>;
+	chop $userid;
+	chop $userid;
+
+	#and the old password
+	my $old_password = <$client>;
+	chop $old_password;
+	chop $old_password;
+	$old_password = md5_base64($old_password);
+	
+	
+	#and the new password
+	my $new_password = <$client>;
+	chop $new_password;
+	chop $new_password;
+	$new_password = md5_base64($new_password);
+	
+	print STDERR "EDITUSERINFO $old_password, $new_password for $userid\r\n";
+	
+	my $query = "SELECT password from authentication where uid='$userid'";
+	my $sth = getdbh()->prepare($query);
+	$sth->execute;
+	if($sth->rows)
+		{
+		my $row = $sth->fetchrow_array;
+		if ($row ne $old_password)
+			{
+			print $client "ERR: bad userid/password\r\n";
+			}
+		else
+			{
+			$sth->finish;
+			$sth = getdbh()->prepare("UPDATE authentication SET password='$new_password' where uid='$userid'");
+			$sth->execute();
+			print $client "$userid: password changed\r\n";
+			}
+		}
+	else
+		{
+		print $client "ERR: bad userid/password\r\n";
+		}
+	return;
+}
+
+sub EDITUSERNAME {
+	#we read the userid
+	my $userid = <$client>;
+	chop $userid;
+	chop $userid;
+	
+	#and the new password
+	my $new_username = <$client>;
+	chop $new_username;
+	chop $new_username;
+
+	if (exists $restricted_users{$new_username})
+		{
+		print $client "ERR: invalid username\r\n";
+		return;
+		}
+	
+	print STDERR "EDITUSERNAME $new_username for $userid\r\n";
+	
+	$new_username = getdbh()->quote($new_username);
+	
+	if(1==getdbh()->do("UPDATE authentication SET username=$new_username where uid='$userid'"))
+		{
+		print $client "OK\r\n";
+		}
+	else
+		{
+		print $client "ERR: Couldn't change password\r\n";
+		}
+return;
+}
+
+sub SETUSER {
+	#we read the challenge string
+	my $username = <$client>;
+	chop $username;
+	chop $username;
+
+	#and the username
+	my $password = <$client>;
+	chop $password;
+	chop $password;
+
+	if($restricted_users{$username})
+                {
+                print $client "ERR: Reserved user\r\n";
+                exit(1);
+                }
+
+	my $password_hash = md5_base64($password);
+	
+	if(userNameExists($username)) # the user already exist ? YES
+			{
+			#so we are trying to get at a lost password
+			my $query = "UPDATE authentication set password='$password_hash' where username='$username'";
+			my $sth = getdbh()->prepare($query);
+			$sth->execute;
+			#we need to return the userid here also...
+			$sth = getdbh()->prepare("SELECT uid from authentication where username='$username'");
+			$sth->execute;
+			my $userid = $sth->fetchrow_array;
+			print $client "$userid:user modified\n";
+			}
+		else  # the user wasn't found, so let's create it then.
+			{
+			my $query = "INSERT INTO authentication (username,password) values('$username','$password_hash')";
+			my $sth = getdbh()->prepare($query);
+			$sth->execute;
+			
+			my $userid = $sth->{'insertid'};
+			
+			my $query = "UPDATE authentication SET forw_addr='userid_$userid\@$maildomain' WHERE uid='$userid'";
+			my $sth = getdbh()->prepare($query);
+			$sth->execute;
+			
+			print $client "$userid:user created\n";
+			}	
+	return;
+	}
+
+sub HELP {
+	print $client <<"EOF";
+
+
+AUTHMD5HEX	(for clients that do MD5 in hexadecimal notation)
+challenge_string
+username
+=> 5:fjhlhfjksfd423dfqwe
+returns userid:authen token
+
+AUTHMD5BIN	(for clients that do MD5 in binary notation)
+challenge_string
+username
+=> 5:fjhlhfjksfd423dfqwe
+returns userid:authen token
+
+AUTHMD5BASE64	(for clients that do MD5 packed in Base64 encoding)
+challenge_string
+username
+=> 5:fjhlhfjksfd423dfqwe
+returns userid:authen token
+
+SETUSER	(create a new user or overwrite an user for pwd retrieval)
+username
+password
+=> 5: user created
+or
+=> 5: user modified
+returns userid: status
+
+EDITUSERPWD 	(modify the password for an user)
+username
+old_password
+new_password
+=> 5: password changed
+returns userid: status
+
+All error situations are reported by
+ERR: error string
+EOF
+
+}
+
+
+sub userNameExists {
+	my $username = shift;
+	my $sth = getdbh()->prepare("SELECT * from authentication where username='$username'");
+	$sth->execute;
+	return $sth->rows;
+	}
+
+#database connection stuff (should be cached somehow)
+sub getdbh {
+	#here we might consider caching the db handle, but ping is broken on mysql (not existant in fact)
+	return DBI->connect("dbi:$dbtype:database=$database;host=$host;port=$port", $username, $password) or die "Can't open DB";	
+	}
+	
+
+	
+=end
+
+=head1 NAME 
+
+odauthd - OpenDesk Authorization Daemon for the challenge-response mechanism
+
+=head1 SYNOPSIS
+    
+=head1 DESCRIPTION
+
+This deamon will eventually deal with every aspect of user authentication, login, adding/deleting users,
+modification of password, etc.  The reason for this is that for increased security, all authentication
+is only avaliable to this deamon, and not to SmartWorker itself.  It provides for nice scalability too.
+In a good scenario, it should be protected by a firewall, so only the webserver can talk to it and it should
+be made readable only by a certain priviledge account.d
+
+=head1 METHODS
+
+=head1 AUTHOR
+
+Philippe M. Chiasson
+HBE	gozer@hbe.ca
+
+=head1 REVISION HISTORY
+
+  $Log: swauthd,v $
+  Revision 1.16  1999/11/15 00:04:08  gozer
+  Changed the default mail-domain
+
+  Revision 1.15  1999/11/11 18:23:04  gozer
+  Oupss... fixed adduser error I broke last night...
+
+  Revision 1.14  1999/11/11 07:13:55  gozer
+  MOre fixes to add changeusername functionnality
+
+  Revision 1.13  1999/10/26 23:43:15  gozer
+  New version (build) of the deamoin
+
+  Revision 1.12  1999/10/26 15:50:16  gozer
+  authentication e-mail field is set up correctly now
+
+  Revision 1.11  1999/10/25 21:54:49  scott
+  fixed the forwarding address
+
+  Revision 1.10  1999/10/25 17:36:30  gozer
+  Hurry before the thundering hearth
+
+  Revision 1.9  1999/10/25 15:37:29  gozer
+  added some denied users ...
+
+  Revision 1.8  1999/10/22 22:13:02  gozer
+  Reads the password in the darn now, and check to make sure it's valid and it can connect at startup
+
+  Revision 1.7  1999/10/16 06:34:45  gozer
+  Modified the daemon to ask for password and also terminate correctly.
+  TERM : die now and kill all your childrens
+  HUP : stop accepting connection and close as soon as the childs are finished
+
+ 
+=head1 SEE ALSO
+
+perl(1).
+
+=cut
+
+
